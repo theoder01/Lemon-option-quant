@@ -1,0 +1,24 @@
+# Copyright © 2026 Bo Hu. All rights reserved.
+#
+# Created: September 13, 2026
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "option-quant"
+version = "0.1.0"
+description = "Quantitative research and historical data collection for U.S. options."
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "futu-api==10.10.7008",
+    "pandas",
+]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]

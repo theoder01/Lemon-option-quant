@@ -1,0 +1,6 @@
+# Copyright © 2026 Bo Hu. All rights reserved.
+#
+# Created: September 13, 2026
+
+futu-api==10.10.7008
+pandas
