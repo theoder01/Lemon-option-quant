@@ -59,11 +59,18 @@ def main():
                 )
 
                 # Save to SQLite database
-                database.save_snapshots(df)
+                saved_count, duplicate_count = (
+                    database.save_snapshots(df)
+                )
 
                 print(
-                    f"Saved {len(df)} rows "
+                    f"Saved {saved_count} new rows "
                     f"to {DATABASE_PATH}"
+                )
+
+                print(
+                    f"Skipped {duplicate_count} "
+                    f"duplicate rows."
                 )
 
             except Exception as error:
