@@ -2,11 +2,10 @@
 #
 # Created: September 13, 2026
 
-from datetime import datetime
-
 import pandas as pd
 
 from option_quant.filters import filter_otm_puts
+from option_quant.time_utils import now_utc
 
 
 SNAPSHOT_BATCH_SIZE = 200
@@ -156,7 +155,7 @@ def collect_option_snapshot(
     - Expiration dates from today up to one year
     """
 
-    snapshot_time = datetime.now()
+    snapshot_time = now_utc()
 
     # ---------------------------------------------------------
     # 1. Underlying price
