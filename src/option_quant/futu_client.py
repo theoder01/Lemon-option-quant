@@ -3,7 +3,8 @@
 # Created: September 13, 2026
 
 import futu as ft
-
+from option_quant.rate_limiter import RateLimiter
+from option_quant.retry import retry
 
 class FutuClient:
     """
@@ -22,6 +23,12 @@ class FutuClient:
         self.host = host
         self.port = port
 
+        self.option_chain_limiter = RateLimiter(
+            max_calls=9,
+            period_seconds=31,
+        )
+
+        
         self.quote_ctx = ft.OpenQuoteContext(
             host=self.host,
             port=self.port,
@@ -62,24 +69,39 @@ class FutuClient:
         self,
         code,
         start=None,
-        end=None,):
+        end=None,
+    ):
         """
         Get option chain for an underlying
         within a specified date range.
+
+        Requests are rate-limited and retried
+        when a temporary API failure occurs.
         """
 
-        ret, data = self.quote_ctx.get_option_chain(
-            code=code,
-            start=start,
-            end=end,
-        )
+        def operation():
 
-        if ret != ft.RET_OK:
-            raise RuntimeError(
-                f"Failed to get option chain for {code}: {data}"
+            self.option_chain_limiter.wait()
+
+            ret, data = self.quote_ctx.get_option_chain(
+                code=code,
+                start=start,
+                end=end,
             )
 
-        return data
+            if ret != ft.RET_OK:
+                raise RuntimeError(
+                    f"Failed to get option chain "
+                    f"for {code}: {data}"
+                )
+
+            return data
+
+        return retry(
+            operation=operation,
+            max_attempts=3,
+            delay_seconds=5,
+        )
 
     def get_option_expiration_dates(self, code):
         """

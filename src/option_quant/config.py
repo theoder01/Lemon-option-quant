@@ -9,7 +9,6 @@ FUTU_PORT = 11111
 
 UNDERLYINGS = [
     "US.NVDA",
-    #"US.GOOG",
-    #"US.IREN",
-    #"US.SPCX",
+    "US.GOOG",
+    "US.SPCX",
 ]
