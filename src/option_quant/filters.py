@@ -5,7 +5,7 @@
 import pandas as pd
 
 
-MIN_STRIKE_RATIO = 0.70
+MIN_STRIKE_RATIO = 0.60
 
 
 def filter_otm_puts(
@@ -23,7 +23,7 @@ def filter_otm_puts(
 
     Example:
         underlying_price = 218.29
-        min_strike_ratio = 0.70
+        min_strike_ratio = 0.60
 
         Valid strike range:
         152.80 <= strike_price < 218.29
