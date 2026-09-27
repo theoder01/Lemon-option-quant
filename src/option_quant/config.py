@@ -11,4 +11,5 @@ UNDERLYINGS = [
     "US.NVDA",
     "US.GOOG",
     "US.SPCX",
+    "US.IREN"
 ]

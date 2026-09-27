@@ -18,11 +18,6 @@ DATABASE_PATH = "data/options.db"
 
 UNDERLYING = "US.NVDA"
 
-CURRENT_UNDERLYING_PRICE = 222.27
-CURRENT_STRIKE = 190.0
-CURRENT_DTE = 30
-CURRENT_IV = 39.201
-
 
 def main():
     database = OptionDatabase(
@@ -37,24 +32,53 @@ def main():
         UNDERLYING
     )
 
+    if history.empty:
+        print("No historical data found.")
+        return
+
     # -------------------------------------------------
-    # 2. Calculate target moneyness
+    # 2. Select the latest option snapshot
     # -------------------------------------------------
 
-    target_moneyness = calculate_moneyness(
-        strike=CURRENT_STRIKE,
-        underlying_price=CURRENT_UNDERLYING_PRICE,
+    history = history.sort_values(
+        "snapshot_time"
+    )
+
+    current = history.iloc[-1]
+
+    current_snapshot_time = current["snapshot_time"]
+    current_underlying_price = float(
+        current["underlying_price"]
+    )
+    current_strike = float(
+        current["strike"]
+    )
+    current_dte = int(
+        current["dte"]
+    )
+    current_iv = float(
+        current["iv"]
     )
 
     # -------------------------------------------------
-    # 3. Find comparable historical options
+    # 3. Calculate target moneyness
+    # -------------------------------------------------
+
+    target_moneyness = calculate_moneyness(
+        strike=current_strike,
+        underlying_price=current_underlying_price,
+    )
+
+    # -------------------------------------------------
+    # 4. Find historical comparable options
     # -------------------------------------------------
 
     comparables = find_comparable_options(
         df=history,
         underlying=UNDERLYING,
         target_moneyness=target_moneyness,
-        target_dte=CURRENT_DTE,
+        target_dte=current_dte,
+        current_snapshot_time=current_snapshot_time,
     )
 
     if comparables.empty:
@@ -64,16 +88,16 @@ def main():
         return
 
     # -------------------------------------------------
-    # 4. Analyze implied volatility
+    # 5. Analyze implied volatility
     # -------------------------------------------------
 
     result = analyze_iv(
         comparables=comparables,
-        current_iv=CURRENT_IV,
+        current_iv=current_iv,
     )
 
     # -------------------------------------------------
-    # 5. Print result
+    # 6. Print result
     # -------------------------------------------------
 
     print()
@@ -81,64 +105,31 @@ def main():
     print("IV Analysis")
     print("=" * 60)
 
-    print(
-        f"Underlying:       "
-        f"{UNDERLYING}"
-    )
-
-    print(
-        f"Spot:             "
-        f"{CURRENT_UNDERLYING_PRICE:.2f}"
-    )
-
-    print(
-        f"Strike:           "
-        f"{CURRENT_STRIKE:.2f}"
-    )
-
-    print(
-        f"Moneyness:        "
-        f"{target_moneyness:.2%}"
-    )
-
-    print(
-        f"Target DTE:       "
-        f"{CURRENT_DTE}"
-    )
+    print(f"Underlying:       {UNDERLYING}")
+    print(f"Snapshot:         {current_snapshot_time}")
+    print(f"Option:           {current['option_code']}")
+    print(f"Spot:             {current_underlying_price:.2f}")
+    print(f"Strike:           {current_strike:.2f}")
+    print(f"Moneyness:        {target_moneyness:.2%}")
+    print(f"Target DTE:       {current_dte}")
 
     print()
-    print(
-        f"Current IV:       "
-        f"{result.current_iv:.3f}%"
-    )
-
-    print(
-        f"Comparable rows:  "
-        f"{result.sample_count}"
-    )
+    print(f"Current IV:       {result.current_iv:.3f}%")
+    print(f"Comparable rows:  {result.sample_count}")
 
     print()
     print("Historical IV")
     print("-" * 40)
 
-    print(
-        f"Mean:             "
-        f"{result.mean_iv:.3f}%"
-    )
+    print(f"Mean:             {result.mean_iv:.3f}%")
+    print(f"Median:           {result.median_iv:.3f}%")
+    print(f"Minimum:          {result.min_iv:.3f}%")
+    print(f"Maximum:          {result.max_iv:.3f}%")
 
+    print()
     print(
-        f"Median:           "
-        f"{result.median_iv:.3f}%"
-    )
-
-    print(
-        f"Minimum:          "
-        f"{result.min_iv:.3f}%"
-    )
-
-    print(
-        f"Maximum:          "
-        f"{result.max_iv:.3f}%"
+        f"IV Percentile:    "
+        f"{result.iv_percentile:.1f}%"
     )
 
 

@@ -23,6 +23,8 @@ class PremiumAnalysisResult:
     min_premium_ratio: float
     max_premium_ratio: float
 
+    premium_percentile: float
+
 
 def calculate_premium_ratio(
     premium: float,
@@ -88,7 +90,8 @@ def analyze_premium(
     Returns
     -------
     PremiumAnalysisResult
-        Basic historical premium-ratio statistics.
+        Historical premium-ratio statistics
+        and percentile.
     """
 
     required_columns = [
@@ -115,10 +118,7 @@ def analyze_premium(
         )
     )
 
-    # -------------------------------------------------
-    # Convert historical values to numeric
-    # -------------------------------------------------
-
+    # Convert historical values to numeric.
     premiums = pd.to_numeric(
         comparables["last"],
         errors="coerce",
@@ -129,10 +129,7 @@ def analyze_premium(
         errors="coerce",
     )
 
-    # -------------------------------------------------
-    # Keep only valid historical samples
-    # -------------------------------------------------
-
+    # Keep only valid historical samples.
     valid_mask = (
         premiums.notna()
         & underlying_prices.notna()
@@ -153,19 +150,20 @@ def analyze_premium(
             "No valid historical premium samples available."
         )
 
-    # -------------------------------------------------
-    # Normalize historical premiums
-    # -------------------------------------------------
-
+    # Normalize historical premiums.
     premium_ratios = (
         premiums
         / underlying_prices
     )
 
-    # -------------------------------------------------
-    # Calculate basic statistics
-    # -------------------------------------------------
+    # Calculate historical percentile.
+    premium_percentile = (
+        (premium_ratios < current_premium_ratio).sum()
+        / len(premium_ratios)
+        * 100
+    )
 
+    # Calculate basic statistics.
     return PremiumAnalysisResult(
         current_premium=float(
             current_premium
@@ -187,5 +185,8 @@ def analyze_premium(
         ),
         max_premium_ratio=float(
             premium_ratios.max()
+        ),
+        premium_percentile=float(
+            premium_percentile
         ),
     )

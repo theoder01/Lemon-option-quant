@@ -22,6 +22,8 @@ class IVAnalysisResult:
     min_iv: float
     max_iv: float
 
+    iv_percentile: float
+
 
 def analyze_iv(
     comparables: pd.DataFrame,
@@ -48,7 +50,7 @@ def analyze_iv(
     Returns
     -------
     IVAnalysisResult
-        Basic historical IV statistics.
+        Historical IV statistics and percentile.
 
     Raises
     ------
@@ -63,15 +65,14 @@ def analyze_iv(
             "Missing required column: iv"
         )
 
-    if current_iv < 0:
+    current_iv = float(current_iv)
+
+    if not 0 <= current_iv <= 500:
         raise ValueError(
-            "Current IV must not be negative."
+            "Current IV must be between 0 and 500."
         )
 
-    # -------------------------------------------------
-    # Remove missing or invalid historical IV values
-    # -------------------------------------------------
-
+    # Remove missing or invalid historical IV values.
     iv_series = pd.to_numeric(
         comparables["iv"],
         errors="coerce",
@@ -79,7 +80,8 @@ def analyze_iv(
 
     iv_series = iv_series[
         iv_series.notna()
-        & (iv_series >= 0)
+        & (iv_series > 0)
+        & (iv_series <= 500)
     ]
 
     if iv_series.empty:
@@ -87,15 +89,20 @@ def analyze_iv(
             "No valid historical IV samples available."
         )
 
-    # -------------------------------------------------
-    # Calculate basic statistics
-    # -------------------------------------------------
+    # Calculate historical percentile.
+    iv_percentile = (
+        (iv_series < current_iv).sum()
+        / len(iv_series)
+        * 100
+    )
 
+    # Calculate basic statistics.
     return IVAnalysisResult(
-        current_iv=float(current_iv),
+        current_iv=current_iv,
         sample_count=len(iv_series),
         mean_iv=float(iv_series.mean()),
         median_iv=float(iv_series.median()),
         min_iv=float(iv_series.min()),
         max_iv=float(iv_series.max()),
+        iv_percentile=float(iv_percentile),
     )

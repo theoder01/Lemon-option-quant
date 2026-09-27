@@ -12,11 +12,15 @@ def find_comparable_options(
     underlying: str,
     target_moneyness: float,
     target_dte: int,
+    current_snapshot_time: str,
     moneyness_tolerance: float = 0.02,
     dte_tolerance: int = 5,
 ) -> pd.DataFrame:
     """
     Find historical options with similar moneyness and DTE.
+
+    Only snapshots strictly earlier than current_snapshot_time
+    are included.
 
     Parameters
     ----------
@@ -36,6 +40,12 @@ def find_comparable_options(
     target_dte : int
         Target days to expiration.
 
+    current_snapshot_time : str
+        Timestamp of the option being analyzed.
+
+        Only snapshots earlier than this timestamp
+        are included in the historical comparison.
+
     moneyness_tolerance : float
         Allowed difference from target moneyness.
 
@@ -50,10 +60,12 @@ def find_comparable_options(
     -------
     pandas.DataFrame
         Historical options matching the requested
-        underlying, moneyness range, and DTE range.
+        underlying, moneyness range, DTE range,
+        and historical time constraint.
     """
 
     required_columns = [
+        "snapshot_time",
         "underlying",
         "underlying_price",
         "strike",
@@ -93,13 +105,28 @@ def find_comparable_options(
             "DTE tolerance must not be negative."
         )
 
+    # Convert timestamps to UTC before comparison.
+    current_time = pd.to_datetime(
+        current_snapshot_time,
+        utc=True,
+    )
+
+    snapshot_times = pd.to_datetime(
+        df["snapshot_time"],
+        format="mixed",
+        utc=True,
+    )
+
+    # Keep only snapshots from the past.
     result = df[
-        df["underlying"] == underlying
+        (df["underlying"] == underlying)
+        & (snapshot_times < current_time)
     ].copy()
 
     if result.empty:
         return result
 
+    # Calculate moneyness for each historical option.
     result["moneyness"] = result.apply(
         lambda row: calculate_moneyness(
             strike=row["strike"],
@@ -128,6 +155,7 @@ def find_comparable_options(
         + dte_tolerance
     )
 
+    # Filter by moneyness and DTE.
     result = result[
         (
             result["moneyness"]

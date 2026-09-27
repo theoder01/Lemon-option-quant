@@ -2,6 +2,8 @@
 #
 # Created: September 19, 2026
 
+import pandas as pd
+
 from option_quant.analytics.comparable_options import (
     find_comparable_options,
 )
@@ -18,11 +20,6 @@ DATABASE_PATH = "data/options.db"
 
 UNDERLYING = "US.NVDA"
 
-CURRENT_UNDERLYING_PRICE = 222.27
-CURRENT_STRIKE = 190.0
-CURRENT_DTE = 30
-CURRENT_PREMIUM = 0.66
-
 
 def main():
     database = OptionDatabase(
@@ -37,24 +34,65 @@ def main():
         UNDERLYING
     )
 
+    if history.empty:
+        print("No historical data found.")
+        return
+
     # -------------------------------------------------
-    # 2. Calculate target moneyness
+    # 2. Select the latest option snapshot
     # -------------------------------------------------
 
-    target_moneyness = calculate_moneyness(
-        strike=CURRENT_STRIKE,
-        underlying_price=CURRENT_UNDERLYING_PRICE,
+    history = history.copy()
+
+    history["_parsed_time"] = pd.to_datetime(
+        history["snapshot_time"],
+        format="mixed",
+        utc=True,
+    )
+
+    history = history.sort_values(
+        "_parsed_time"
+    )
+
+    current = history.iloc[-1]
+
+    current_snapshot_time = current["snapshot_time"]
+
+    current_underlying_price = float(
+        current["underlying_price"]
+    )
+
+    current_strike = float(
+        current["strike"]
+    )
+
+    current_dte = int(
+        current["dte"]
+    )
+
+    current_premium = float(
+        current["last"]
     )
 
     # -------------------------------------------------
-    # 3. Find historical comparable options
+    # 3. Calculate target moneyness
+    # -------------------------------------------------
+
+    target_moneyness = calculate_moneyness(
+        strike=current_strike,
+        underlying_price=current_underlying_price,
+    )
+
+    # -------------------------------------------------
+    # 4. Find historical comparable options
     # -------------------------------------------------
 
     comparables = find_comparable_options(
         df=history,
         underlying=UNDERLYING,
         target_moneyness=target_moneyness,
-        target_dte=CURRENT_DTE,
+        target_dte=current_dte,
+        current_snapshot_time=current_snapshot_time,
     )
 
     if comparables.empty:
@@ -64,17 +102,17 @@ def main():
         return
 
     # -------------------------------------------------
-    # 4. Analyze premium
+    # 5. Analyze premium
     # -------------------------------------------------
 
     result = analyze_premium(
         comparables=comparables,
-        current_premium=CURRENT_PREMIUM,
-        current_underlying_price=CURRENT_UNDERLYING_PRICE,
+        current_premium=current_premium,
+        current_underlying_price=current_underlying_price,
     )
 
     # -------------------------------------------------
-    # 5. Print result
+    # 6. Print result
     # -------------------------------------------------
 
     print()
@@ -88,13 +126,23 @@ def main():
     )
 
     print(
+        f"Snapshot:                "
+        f"{current_snapshot_time}"
+    )
+
+    print(
+        f"Option:                  "
+        f"{current['option_code']}"
+    )
+
+    print(
         f"Spot:                    "
-        f"{CURRENT_UNDERLYING_PRICE:.2f}"
+        f"{current_underlying_price:.2f}"
     )
 
     print(
         f"Strike:                  "
-        f"{CURRENT_STRIKE:.2f}"
+        f"{current_strike:.2f}"
     )
 
     print(
@@ -104,7 +152,7 @@ def main():
 
     print(
         f"Target DTE:              "
-        f"{CURRENT_DTE}"
+        f"{current_dte}"
     )
 
     print()
@@ -145,6 +193,12 @@ def main():
     print(
         f"Maximum:                 "
         f"{result.max_premium_ratio:.3%}"
+    )
+
+    print()
+    print(
+        f"Premium Percentile:      "
+        f"{result.premium_percentile:.1f}%"
     )
 
 
