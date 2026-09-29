@@ -25,6 +25,16 @@ class IVAnalysisResult:
     iv_percentile: float
 
 
+def valid_iv_values(comparables: pd.DataFrame) -> pd.Series:
+    """Return valid stored IV observations in percentage points."""
+    iv_series = pd.to_numeric(comparables["iv"], errors="coerce")
+    return iv_series[
+        iv_series.notna()
+        & (iv_series > 0)
+        & (iv_series <= 500)
+    ]
+
+
 def analyze_iv(
     comparables: pd.DataFrame,
     current_iv: float,
@@ -73,16 +83,7 @@ def analyze_iv(
         )
 
     # Remove missing or invalid historical IV values.
-    iv_series = pd.to_numeric(
-        comparables["iv"],
-        errors="coerce",
-    )
-
-    iv_series = iv_series[
-        iv_series.notna()
-        & (iv_series > 0)
-        & (iv_series <= 500)
-    ]
+    iv_series = valid_iv_values(comparables)
 
     if iv_series.empty:
         raise ValueError(

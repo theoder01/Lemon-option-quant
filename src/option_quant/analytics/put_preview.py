@@ -16,12 +16,17 @@ import pandas as pd
 
 from option_quant.analytics.comparable_options import find_comparable_options
 from option_quant.analytics.premium_analysis import PremiumAnalysisResult, analyze_premium
+from option_quant.analytics.iv_analysis import IVAnalysisResult, analyze_iv, valid_iv_values
 from option_quant.analytics.put_annualized_return import (
     PutAnnualizedReturnResult,
     calculate_initial_annualized_return,
 )
 from option_quant.database import OptionDatabase, TABLE_NAME
 from option_quant.time_utils import get_trading_date
+
+
+LIMITED_HISTORY_SAMPLES = 20
+LIMITED_HISTORY_DAYS = 5
 
 
 class ReadOnlyOptionDatabase(OptionDatabase):
@@ -97,6 +102,69 @@ def latest_reference(history: pd.DataFrame, underlying: str, as_of: datetime):
 
 
 @dataclass(frozen=True)
+class PutIVReference:
+    """Stored contract IV and its prior peers, independent of entry decisions."""
+
+    status: str = "current_unavailable"
+    current_iv: float | None = None
+    option_code: str | None = None
+    snapshot_time: str | None = None
+    analysis: IVAnalysisResult | None = None
+    sample_count: int = 0
+    trading_days: int = 0
+    limited_history: bool = False
+
+
+def analyze_put_iv_reference(
+    *, history: pd.DataFrame, comparables: pd.DataFrame, underlying: str,
+    expiry: date, strike: float, as_of: datetime, comparison_available: bool,
+) -> PutIVReference:
+    """Match the latest exact Put; reuse premium peers with a stricter time cutoff.
+
+    IV is stored in percentage points, not a decimal fraction. Do not fall back
+    to a different contract or older quote when the latest matching IV is invalid.
+    The peer moneyness/DTE targets remain those of the current GUI inputs.
+    """
+    required = {"underlying", "snapshot_time", "expiry", "strike", "option_code", "iv"}
+    if history.empty or not required.issubset(history.columns):
+        return PutIVReference()
+    rows = historical_rows(history, underlying, as_of)
+    rows = rows[
+        rows["option_code"].astype(str).str.contains(r"P\d+$", regex=True)
+        & (pd.to_numeric(rows["strike"], errors="coerce") == strike)
+        & (pd.to_datetime(rows["expiry"], errors="coerce").dt.date == expiry)
+    ]
+    if rows.empty:
+        return PutIVReference()
+    latest = rows[rows["_time"] == rows["_time"].max()]
+    if len(latest) != 1:
+        return PutIVReference(status="ambiguous_current")
+    current = latest.iloc[0]
+    source = dict(option_code=str(current["option_code"]), snapshot_time=current["_time"].isoformat())
+    valid_current = valid_iv_values(latest)
+    if valid_current.empty:
+        return PutIVReference(status="invalid_current", **source)
+    source["current_iv"] = float(valid_current.iloc[0])
+    if not comparison_available:
+        return PutIVReference(status="comparison_unavailable", **source)
+    if comparables.empty or "iv" not in comparables:
+        return PutIVReference(status="history_insufficient", **source)
+    # Exclude the source snapshot, simultaneous observations, and later rows.
+    prior = comparables[comparables["_time"] < current["_time"]].reset_index(drop=True)
+    valid = valid_iv_values(prior)
+    if valid.empty:
+        return PutIVReference(status="history_insufficient", **source)
+    analysis = analyze_iv(prior, source["current_iv"])
+    trading_days = int(prior.loc[valid.index, "_time"].dt.tz_convert("America/New_York").dt.date.nunique())
+    return PutIVReference(
+        status="available", analysis=analysis, sample_count=analysis.sample_count,
+        trading_days=trading_days,
+        limited_history=analysis.sample_count < LIMITED_HISTORY_SAMPLES or trading_days < LIMITED_HISTORY_DAYS,
+        **source,
+    )
+
+
+@dataclass(frozen=True)
 class PutPreview:
     underlying: str
     annual: PutAnnualizedReturnResult
@@ -106,6 +174,7 @@ class PutPreview:
     sample_start: str | None
     sample_end: str | None
     notes: tuple[str, ...]
+    iv: PutIVReference = PutIVReference()
 
 
 def analyze_put_preview(
@@ -132,6 +201,7 @@ def analyze_put_preview(
     )
     notes = []
     result = None
+    comparable = pd.DataFrame()
     moneyness = strike / spot if spot is not None else None
     days = 0
     start = end = None
@@ -165,8 +235,13 @@ def analyze_put_preview(
                     dates = comparable["_time"].dt.tz_convert("America/New_York").dt.date
                     days = dates.nunique()
                     start, end = str(dates.min()), str(dates.max())
-                    if result.sample_count < 20 or days < 5:
+                    if result.sample_count < LIMITED_HISTORY_SAMPLES or days < LIMITED_HISTORY_DAYS:
                         notes.append("Historical samples or date coverage are limited; percentile is for reference only.")
             if result is None:
                 notes.append("No valid historical Put samples with similar moneyness and DTE.")
-    return PutPreview(underlying, annual, result, moneyness, days, start, end, tuple(notes))
+    iv = analyze_put_iv_reference(
+        history=history, comparables=comparable, underlying=underlying,
+        expiry=expiry, strike=strike, as_of=as_of,
+        comparison_available=moneyness is not None and moneyness <= 1,
+    )
+    return PutPreview(underlying, annual, result, moneyness, days, start, end, tuple(notes), iv)

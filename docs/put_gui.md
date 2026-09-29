@@ -33,6 +33,28 @@ not include all currently listed contracts; YYYY-MM-DD can also be entered.
 Use spot and premium from the same valuation time. Changing the ticker clears
 the old spot price.
 
+Numeric inputs permit normal text editing, including temporarily empty text,
+partial numbers, Backspace/Delete, Ctrl+A to select all, and copy/paste. Strict
+validation occurs on Calculate: premium must be finite and nonnegative, strike
+must be finite and positive, and a supplied spot must be finite and positive.
+Blank spot retains the existing annual-only behavior; premium and strike are
+required. Editing clears stale results rather than blocking the keystroke.
+
+The expiration dropdown continues to offer dates loaded from the database.
+The **Calendar** button beside it opens a lightweight Tk calendar with previous
+and next month controls. Select a day to populate the same expiration input in
+ISO `YYYY-MM-DD` format, including dates absent from the historical dropdown.
+It initially shows the entered date, or today's New York date if the input is
+empty or invalid. **Today** selects that New York date; **Cancel** or Escape
+closes without changing the input. Past and same-day dates remain selectable,
+but Calculate enforces the existing expiration rules. Selecting a date does not
+calculate automatically or change the database's dropdown choices.
+
+The calendar is non-modal, so the main language selector remains usable while
+it is open. Its title, month names, weekdays and controls update immediately
+between English and Simplified Chinese. It uses only Python's standard-library
+`calendar`, `datetime` and Tkinter; no new dependency is needed.
+
 **Calculate Percentile and Initial Annualized Return** displays:
 
 - Historical premium percentile: existing comparable-option and premium analysis,
@@ -42,6 +64,8 @@ the old spot price.
 - Net initial annualized return: one contract / 100 shares, full strike cash
   collateral, after estimated Futu HK fixed-plan opening fees. Existing fee and
   annualized-return calculations are unchanged.
+- Historical IV percentile: the selected Put's latest stored IV compared with
+  valid prior premium-comparable snapshots. This third card is reference only.
 - Sample count, trading-date coverage, history range, premium ratios, collateral,
   net premium, fees, DTE, and moneyness. The existing IREN >30% example threshold is
   advisory, not a trading instruction.
@@ -106,9 +130,61 @@ languages both ways, and confirm the numeric results and inputs stay fixed. Test
 invalid input and missing history in both languages, then relaunch to check the
 preference. Native dialogs follow the OS locale as described above.
 
-The window currently exposes new-position Put analysis only. Existing-position
-remaining annualized return and implied-volatility analysis remain in their
-existing modules and are not added to the GUI by this localization task.
+## Historical IV reference
+
+The third result card shows **Historical IV Percentile**, **Current IV**, and
+**Reference only**. This supplements premium analysis and net annualized return;
+it does not change the IREN example threshold, classify entries, generate a
+buy/sell recommendation, or combine the percentiles into a score. No manual IV
+input or separate analysis page is added.
+
+The latest stored observation strictly before valuation time is selected by
+underlying, Put type, expiration date, and exact strike. IV units are percentage
+points (`52.4` means `52.4%`). The contract code and UTC timestamp are shown in
+details. This is a historical reference, not a live quote or the IV implied by
+the manually entered premium. No different strike/expiration or older valid IV
+is substituted if the latest matching IV is invalid. Ambiguous latest snapshots
+produce an unavailable state rather than an arbitrary choice.
+
+`analyze_put_preview()` retains the existing premium-comparable DataFrame and
+passes it to `analyze_put_iv_reference()`. That helper restricts IV peers to
+timestamps strictly earlier than the selected IV source snapshot. Thus the source
+observation, simultaneous snapshots, and later observations cannot enter its own
+comparison. Both analyses use the entered strike/spot ±2 percentage points and
+current calendar DTE ±5 days, same underlying Put, and existing valid-price/Put
+filters. No second peer-selection algorithm exists. Premium keeps its original
+valuation-time cutoff, so sample counts can differ; details state this explicitly.
+
+Existing `analytics/iv_analysis.py::analyze_iv()` supplies the percentile and
+statistics. Its stored-value filtering is shared through `valid_iv_values()`:
+nulls, nonnumeric values, nonfinite values, zero/negative values and IV above 500%
+are excluded. The existing strict-below definition is unchanged:
+
+`100 × count(valid prior IV < current IV) / count(valid prior IV)`.
+
+There is no existing statistical minimum beyond a nonempty valid IV set, so no
+new cutoff is invented. Zero valid prior samples display **Insufficient historical
+IV data**, a dash instead of a numeric percentile, and sample count zero. Nonempty
+sets retain the analyzer's percentile, including a genuine 0%; fewer than 20
+snapshots or 5 New York dates receive the GUI's existing limited-history warning
+policy. These warnings are descriptive, not IV thresholds or trading signals.
+
+Details contain current IV, percentile, valid snapshot and trading-date counts,
+median, range, source timestamp, peer criteria and percentile definition. Without
+valid current IV or eligible spot/moneyness inputs, coverage is marked not
+evaluated. Premium and annualized calculations still work as before. Input edits
+clear stale IV output; language switching rerenders retained IV results without
+recalculation or database writes. All added text uses the existing English/Chinese
+resources.
+
+IV tests cover exact contract/time lookup, strict ties, source and later-snapshot
+exclusion, moneyness/DTE boundaries, invalid IV, missing/ambiguous sources, limited
+history, unchanged premium/annual/fee results, SQLite-backed loading, and both
+GUI languages. The old `tests/test_iv_analysis.py` remains a manual example;
+`tests/test_put_iv_preview.py` provides automated integration coverage.
+
+The window exposes new-position Put analysis only. Existing-position remaining
+annualized return remains in its existing module.
 
 [Project](../README.md) · [Architecture](architecture.md) ·
 [Return and fee conventions](put_annualized_return.md) · [Data schema](data_schema.md)

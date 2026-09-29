@@ -16,6 +16,7 @@ from option_quant.gui_i18n import (
     LANGUAGES, Translator, JoinedMessages, message, error_message,
     canonical_message, load_language, save_language,
 )
+from option_quant.date_picker import DatePicker
 
 from option_quant.analytics.put_preview import (
     ReadOnlyOptionDatabase,
@@ -47,8 +48,13 @@ class PutAnalysisWindow(ttk.Frame):
         self.status = self.translated(message('initial_status'))
         self.annual_text = tk.StringVar(value="—")
         self.percentile_text = tk.StringVar(value="—")
+        self.iv_percentile_text = self.translated("—")
+        self.iv_current_text = self.translated("")
+        self.iv_status_text = self.translated("")
         self._loading = False
         self._historical_spot = False
+        self.calendar_window = None
+        self.numeric_entries = {}
 
         ttk.Label(self, textvariable=self.translated(message('app_name')), font=("Microsoft YaHei UI", 20, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(self, textvariable=self.translated(message('subtitle'))).grid(row=1, column=0, columnspan=3, sticky="w", pady=(3, 18))
@@ -65,14 +71,23 @@ class PutAnalysisWindow(ttk.Frame):
         self.ticker_box = ttk.Combobox(inputs, textvariable=self.underlying, width=20)
         self.ticker_box.grid(row=0, column=1, sticky="ew")
         ttk.Label(inputs, textvariable=self.translated(message('expiry'))).grid(row=0, column=2, padx=(22, 12))
-        self.expiry_box = ttk.Combobox(inputs, textvariable=self.expiry, width=20)
-        self.expiry_box.grid(row=0, column=3, sticky="ew")
+        expiration_controls = ttk.Frame(inputs)
+        expiration_controls.grid(row=0, column=3, sticky="ew")
+        expiration_controls.columnconfigure(0, weight=1)
+        self.expiry_box = ttk.Combobox(expiration_controls, textvariable=self.expiry, width=14)
+        self.expiry_box.grid(row=0, column=0, sticky="ew")
+        self.calendar_button = ttk.Button(expiration_controls,
+                                         textvariable=self.translated(message('calendar_open')),
+                                         command=self.open_calendar)
+        self.calendar_button.grid(row=0, column=1, padx=(6, 0))
         ttk.Label(inputs, textvariable=self.translated(message('expiry_hint'))).grid(row=1, column=2, columnspan=2, sticky="w", padx=(22, 0), pady=(4, 8))
-        for column, label, variable in [(0, message('premium'), self.premium), (2, message('strike'), self.strike)]:
+        for column, key, variable in [(0, 'premium', self.premium), (2, 'strike', self.strike)]:
+            label = message(key)
             ttk.Label(inputs, textvariable=self.translated(label)).grid(row=2, column=column, sticky="w", padx=(0 if column == 0 else 22, 12))
-            ttk.Entry(inputs, textvariable=variable).grid(row=2, column=column + 1, sticky="ew")
+            entry = self.numeric_entry(inputs, key, variable)
+            entry.grid(row=2, column=column + 1, sticky="ew")
         ttk.Label(inputs, textvariable=self.translated(message('spot'))).grid(row=3, column=0, sticky="w", pady=(14, 0))
-        ttk.Entry(inputs, textvariable=self.spot).grid(row=3, column=1, sticky="ew", pady=(14, 0))
+        self.numeric_entry(inputs, 'spot', self.spot).grid(row=3, column=1, sticky="ew", pady=(14, 0))
         self.reference_button = ttk.Button(inputs, textvariable=self.translated(message('load_reference')), command=self.load_reference)
         self.reference_button.grid(row=3, column=2, columnspan=2, sticky="ew", padx=(22, 0), pady=(14, 0))
         ttk.Label(inputs, textvariable=self.spot_source, wraplength=740, foreground="#806019").grid(row=4, column=0, columnspan=4, sticky="w", pady=(10, 0))
@@ -82,12 +97,29 @@ class PutAnalysisWindow(ttk.Frame):
 
         cards = ttk.Frame(self)
         cards.grid(row=6, column=0, columnspan=3, sticky="ew")
-        for col, title, var in [(0, message('historical_percentile'), self.percentile_text), (1, message('net_annualized_return'), self.annual_text)]:
+        self.result_cards = []
+        for col, title, var in [
+            (0, message('historical_percentile'), self.percentile_text),
+            (1, message('net_annualized_return'), self.annual_text),
+            (2, message('historical_iv_percentile'), self.iv_percentile_text),
+        ]:
             cards.columnconfigure(col, weight=1, uniform="card")
             frame = ttk.LabelFrame(cards, padding=15)
-            frame.configure(labelwidget=ttk.Label(frame, textvariable=self.translated(title)))
+            self.result_cards.append(frame)
+            heading = ttk.Label(frame, textvariable=self.translated(title), wraplength=230)
+            frame.configure(labelwidget=heading)
             frame.grid(row=0, column=col, sticky="nsew", padx=(0, 8) if col == 0 else (8, 0))
-            ttk.Label(frame, textvariable=var, font=("Microsoft YaHei UI", 27, "bold"), foreground="#186a56").pack(anchor="w")
+            value_label = ttk.Label(frame, textvariable=var, wraplength=230,
+                                    font=("Microsoft YaHei UI", 27, "bold"),
+                                    foreground="#186a56" if col < 2 else "#465767")
+            value_label.pack(anchor="w", fill="x")
+            wrapped_labels = [heading, value_label]
+            if col == 2:
+                for variable in [self.iv_current_text, self.translated(message('iv_reference_only')), self.iv_status_text]:
+                    label = ttk.Label(frame, textvariable=variable, wraplength=230)
+                    label.pack(anchor="w", fill="x", pady=(3, 0))
+                    wrapped_labels.append(label)
+            frame.bind("<Configure>", lambda event, labels=wrapped_labels: self.wrap_card(event, labels))
         ttk.Label(self, textvariable=self.translated(message('comparison')), wraplength=820).grid(row=7, column=0, columnspan=3, sticky="w", pady=(14, 3))
         ttk.Label(self, textvariable=self.translated(message('percentile_explanation')), wraplength=820).grid(row=8, column=0, columnspan=3, sticky="w")
         ttk.Label(self, textvariable=self.translated(message('details_heading')), font=("Microsoft YaHei UI", 11, "bold")).grid(row=9, column=0, columnspan=3, sticky="w", pady=(14, 5))
@@ -122,7 +154,44 @@ class PutAnalysisWindow(ttk.Frame):
         # Confirming a language choice must never trigger a calculation.
         if event.widget is self.language_box:
             return "break"
+        if event.widget is self.calendar_button:
+            self.open_calendar()
+            return "break"
         self.calculate()
+
+    def numeric_entry(self, master, key, variable):
+        # Editing must allow empty/partial text. Existing analysis validates only
+        # when Calculate is invoked; native Tk bindings handle deletion and paste.
+        entry = ttk.Entry(master, textvariable=variable, validate="none")
+        for sequence in ('<Control-a>', '<Control-A>'):
+            entry.bind(sequence, self.select_all_numeric)
+        self.numeric_entries[key] = entry
+        return entry
+
+    @staticmethod
+    def select_all_numeric(event):
+        event.widget.selection_range(0, 'end')
+        event.widget.icursor('end')
+        return 'break'
+
+    def open_calendar(self):
+        if self.calendar_window is not None and self.calendar_window.winfo_exists():
+            self.calendar_window.lift()
+            return
+        today = get_trading_date(now_utc())
+        try:
+            selected = date.fromisoformat(self.expiry.get().strip())
+        except ValueError:
+            selected = today
+        self.calendar_window = DatePicker(
+            self.winfo_toplevel(), selected=selected, today=today,
+            translator=self.translator, on_select=self.expiry.set,
+        )
+
+    @staticmethod
+    def wrap_card(event, labels):
+        for label in labels:
+            label.configure(wraplength=max(80, event.width - 34))
 
     def translated(self, value):
         variable = tk.StringVar(master=self)
@@ -141,6 +210,8 @@ class PutAnalysisWindow(ttk.Frame):
         for variable, value in self._translated_variables.values():
             variable.set(self.translator.render(value))
         self.set_details(self._detail_messages)
+        if self.calendar_window is not None and self.calendar_window.winfo_exists():
+            self.calendar_window.refresh_language()
         if not save_language(self.preference_path, language):
             self.set_message(self.preference_status, message("preference_not_saved"))
         else:
@@ -156,6 +227,9 @@ class PutAnalysisWindow(ttk.Frame):
     def invalidate(self, *args):
         self.annual_text.set("—")
         self.set_message(self.percentile_text, "—")
+        self.set_message(self.iv_percentile_text, "—")
+        self.set_message(self.iv_current_text, "")
+        self.set_message(self.iv_status_text, "")
         self.set_details("")
         self.set_message(self.status, message('inputs_updated'))
 
@@ -254,6 +328,7 @@ class PutAnalysisWindow(ttk.Frame):
             if underlying == "US.IREN":
                 met = YieldThresholds().evaluate(annual) == "entry_yield_met"
                 lines.append(message('threshold_met') if met else message('threshold_not_met'))
+            self.show_iv_reference(result.iv, lines)
             notes = [canonical_message(note) for note in result.notes]
             if database_note:
                 notes.append(database_note)
@@ -263,6 +338,41 @@ class PutAnalysisWindow(ttk.Frame):
             self.set_details(JoinedMessages(tuple(lines)))
         except Exception as error:
             self.set_message(self.status, message('calculation_failed', error=error_message(error)))
+
+    def show_iv_reference(self, iv, lines):
+        states = {
+            "current_unavailable": "iv_current_unavailable",
+            "invalid_current": "iv_invalid_current",
+            "ambiguous_current": "iv_ambiguous_current",
+            "comparison_unavailable": "iv_comparison_unavailable",
+            "history_insufficient": "iv_history_insufficient",
+        }
+        lines.extend([message('iv_details_heading'), message('iv_reference_explanation')])
+        if iv.current_iv is not None:
+            current = message('iv_current', value=iv.current_iv)
+            self.set_message(self.iv_current_text, current)
+            lines.append(current)
+        if iv.snapshot_time is not None:
+            lines.append(message('iv_source', option_code=iv.option_code, timestamp=iv.snapshot_time))
+        if iv.status in ("available", "history_insufficient"):
+            lines.append(message('iv_sample_count', count=iv.sample_count, days=iv.trading_days))
+        else:
+            lines.append(message('iv_coverage_unavailable'))
+        if iv.analysis is not None:
+            self.set_message(self.iv_percentile_text, f"{iv.analysis.iv_percentile:.1f}%")
+            lines.extend([
+                message('iv_percentile_detail', percentile=iv.analysis.iv_percentile),
+                message('iv_statistics', median=iv.analysis.median_iv,
+                        minimum=iv.analysis.min_iv, maximum=iv.analysis.max_iv),
+            ])
+            if iv.limited_history:
+                self.set_message(self.iv_status_text, message('iv_limited_history'))
+                lines.append(message('iv_limited_history'))
+        else:
+            note = message(states[iv.status])
+            self.set_message(self.iv_status_text, note)
+            lines.append(note)
+        lines.extend([message('iv_comparison_criteria'), message('iv_percentile_definition')])
 
 
 def create_root():
@@ -277,9 +387,9 @@ def create_root():
     root.title(Translator().render(message("window_title")))
     scale = max(1, float(root.tk.call("tk", "scaling")) / (96 / 72))
     width = min(int(960 * scale), root.winfo_screenwidth() - 80)
-    height = min(int(850 * scale), root.winfo_screenheight() - 100)
+    height = min(int(1000 * scale), root.winfo_screenheight() - 100)
     root.geometry(f"{width}x{height}")
-    root.minsize(min(int(880 * scale), width), min(int(760 * scale), height))
+    root.minsize(min(int(880 * scale), width), min(int(920 * scale), height))
     style = ttk.Style(root)
     style.theme_use("clam")
     style.configure(".", font=("Microsoft YaHei UI", 10))

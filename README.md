@@ -12,9 +12,9 @@ A local research tool for collecting U.S. option snapshots and evaluating cash-s
 
 - Daily historical snapshots with OTM Put filtering, validation, duplicate protection, UTC timestamps, and New York trading-date handling.
 - Historical comparable selection by moneyness and days to expiration (DTE).
-- Normalized premium statistics and percentile; historical IV statistics in the analysis module.
+- Normalized premium statistics and percentile; historical IV percentile and descriptive statistics.
 - Initial and remaining-holding-period annualized-return calculations with estimated Futu HK fixed-plan fees.
-- A simple Tkinter GUI for **one standard Put**: historical premium percentile, initial annualized return, and supporting data.
+- A simple Tkinter GUI for **one standard Put**: historical premium percentile, initial annualized return, reference-only historical IV percentile, and supporting data.
 
 ## Quick Start
 
@@ -35,10 +35,15 @@ python scripts/launch_put_gui.py
 The launcher resolves this checkout's source and `data/options.db` relative to its own location. It can also be launched from another working directory using the script's full path.
 
 1. Enter an underlying, such as `IREN` or `US.NVDA`.
-2. Click **读取历史参考价与到期日** to load a timestamped historical stock price and known future expiration dates, or enter the values manually.
-3. Select an expiration or type `YYYY-MM-DD`.
+2. Click **Load Historical Price and Expirations** to load a timestamped historical stock price and known future expiration dates, or enter the values manually.
+3. Select an expiration from the historical dropdown, use the adjacent **Calendar** button, or type `YYYY-MM-DD`.
 4. Enter the option premium **per share**, strike, and underlying price. Prefer stock and option quotes from the same valuation time.
-5. Click **计算百分位与初始年化**.
+5. Click **Calculate Percentile and Initial Annualized Return**.
+
+Numeric fields allow normal Backspace/Delete, Ctrl+A selection and copy/paste,
+including empty or partial values while editing. Final numeric validation runs
+when calculating. The calendar preserves ISO dates and existing expiration rules;
+it introduces no dependency or calculation change.
 
 The window shows:
 
@@ -46,11 +51,21 @@ The window shows:
 |---|---|
 | Historical premium percentile | Relative position of current premium / stock price among comparable historical Put snapshots |
 | Initial annualized return | Simple ACT/365 return after estimated opening fees, using full strike collateral |
+| Historical IV percentile | Latest stored IV for the exact Put versus valid prior premium-comparable observations; reference only, not a trading signal |
 | Sample coverage | Valid snapshot count, distinct New York dates, and historical date range |
 | Supporting values | DTE, moneyness, collateral, gross/net premium, fees, and historical premium-ratio median/range |
 | IREN example threshold | Whether initial annualized return is strictly greater than 30%; advisory only |
 
 **Historical reference prices are not live quotes.** The expiration list comes from the database and may not include every currently listed contract. The database is opened read-only. Missing history or missing stock price does not prevent annualized-return calculation; unavailable percentiles are not displayed as zero.
+
+IV is matched by underlying, Put type, expiration, and exact strike, with its source
+contract and timestamp shown in the details. It is not inferred from the entered
+premium. IV peers reuse the premium peer set but must precede the stored IV
+timestamp, so IV and premium sample counts can differ. The existing IV analyzer
+uses a strict-below percentile and accepts any nonempty valid set; zero valid
+prior observations show **Insufficient historical IV data**, while fewer than
+20 snapshots or 5 trading dates show a limited-coverage warning. No IV score,
+entry threshold, or buy/sell recommendation is introduced.
 
 The GUI currently covers opening analysis only. Remaining-holding-period return and the below-20% example threshold are available in the calculation module, not yet in the window. Same-day expiration, adjusted contracts, multiple-contract input, and live quotes are not supported by this first GUI.
 
@@ -151,6 +166,7 @@ src/option_quant/
 ├── collector.py
 ├── config.py
 ├── database.py
+├── date_picker.py
 ├── filters.py
 ├── futu_client.py
 ├── gui_i18n.py

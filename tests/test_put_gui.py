@@ -14,6 +14,7 @@ from unittest.mock import patch
 from option_quant.put_gui import PutAnalysisWindow
 from option_quant.gui_strings import LANGUAGES
 from test_put_preview import NOW, sample_history
+from test_put_iv_preview import iv_history
 
 
 class PutGuiTests(unittest.TestCase):
@@ -73,7 +74,7 @@ class PutGuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             database = Path(tmp) / 'history.db'
             with closing(sqlite3.connect(database)) as connection:
-                sample_history().to_sql('option_snapshots', connection, index=False)
+                iv_history().to_sql('option_snapshots', connection, index=False)
             self.window.database_path.set(str(database))
             self.window.load_reference()
             self.fill()
@@ -81,7 +82,9 @@ class PutGuiTests(unittest.TestCase):
             inputs = [self.window.underlying, self.window.expiry, self.window.premium,
                       self.window.strike, self.window.spot, self.window.database_path]
             before_inputs = [variable.get() for variable in inputs]
-            before_results = (self.window.annual_text.get(), self.window.percentile_text.get())
+            before_results = (self.window.annual_text.get(), self.window.percentile_text.get(),
+                              self.window.iv_percentile_text.get())
+            self.assertEqual(self.window.iv_percentile_text.get(), '50.0%')
             before_details = self.window.details.get('1.0', 'end')
             before_widgets = self.window.winfo_children()
             before_database = database.read_bytes()
@@ -93,7 +96,9 @@ class PutGuiTests(unittest.TestCase):
                 self.assertIn('估值时间', self.window.details.get('1.0', 'end'))
                 self.assertIn('样本较少', self.window.status.get())
                 self.assertEqual([variable.get() for variable in inputs], before_inputs)
-                self.assertEqual((self.window.annual_text.get(), self.window.percentile_text.get()), before_results)
+                self.assertEqual((self.window.annual_text.get(), self.window.percentile_text.get(),
+                                  self.window.iv_percentile_text.get()), before_results)
+                self.assertIn('当前隐含波动率', self.window.iv_current_text.get())
                 self.switch_language('en')
                 self.assertEqual(self.window.details.get('1.0', 'end'), before_details)
                 self.assertEqual(self.window.winfo_children(), before_widgets)
@@ -146,6 +151,41 @@ class PutGuiTests(unittest.TestCase):
             calculate.assert_not_called()
             self.window.on_return(SimpleNamespace(widget=self.window.expiry_box))
             calculate.assert_called_once()
+
+    @patch('option_quant.put_gui.now_utc', return_value=NOW)
+    @patch('option_quant.put_gui.ReadOnlyOptionDatabase.load_underlying', return_value=iv_history())
+    def test_iv_card_details_translation_and_invalidation(self, *mocks):
+        self.fill()
+        self.window.analyze_button.invoke()
+        self.assertEqual(len(self.window.result_cards), 3)
+        self.assertEqual(self.window.iv_percentile_text.get(), '50.0%')
+        self.assertEqual(self.window.iv_current_text.get(), 'Current IV: 50.0%')
+        details = self.window.details.get('1.0', 'end')
+        self.assertIn('median 40.0%', details)
+        self.assertIn('US.IREN261028P90000', details)
+        self.assertIn('2026-09-23T15:00:00+00:00', details)
+        self.assertIn('2 snapshots', details)
+        self.switch_language('zh_CN')
+        self.assertIn('隐含波动率历史百分位：50.0%', self.window.details.get('1.0', 'end'))
+        self.assertIn('仅供参考', self.window.details.get('1.0', 'end'))
+        self.window.strike.set('91')
+        self.assertEqual(self.window.iv_percentile_text.get(), '—')
+        self.assertEqual(self.window.iv_current_text.get(), '')
+        self.window.analyze_button.invoke()
+        self.assertIn('无已存储', self.window.iv_status_text.get())
+        self.assertIn('%', self.window.annual_text.get())
+
+    @patch('option_quant.put_gui.now_utc', return_value=NOW)
+    @patch('option_quant.put_gui.ReadOnlyOptionDatabase.load_underlying', return_value=iv_history().iloc[-1:])
+    def test_iv_insufficient_history_in_both_languages(self, *mocks):
+        self.fill()
+        self.window.calculate()
+        self.assertEqual(self.window.iv_percentile_text.get(), '—')
+        self.assertEqual(self.window.iv_status_text.get(), 'Insufficient historical IV data')
+        self.assertIn('0 snapshots', self.window.details.get('1.0', 'end'))
+        self.switch_language('zh_CN')
+        self.assertEqual(self.window.iv_status_text.get(), '历史隐含波动率数据不足')
+        self.assertIn('0 条快照', self.window.details.get('1.0', 'end'))
 
 
 if __name__ == '__main__':

@@ -90,6 +90,22 @@ class TranslationTests(unittest.TestCase):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 self.assertFalse(re.search(r'[\u4e00-\u9fff]', node.value))
 
+    def test_calendar_uses_resources_for_prose(self):
+        from option_quant import date_picker
+        tree = ast.parse(Path(date_picker.__file__).read_text(encoding='utf-8'))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for keyword in node.keywords:
+                    if keyword.arg in ('text', 'title'):
+                        self.assertNotIsInstance(keyword.value, ast.Constant)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                self.assertFalse(re.search(r'[\u4e00-\u9fff]', node.value))
+                if node.value.startswith('calendar_'):
+                    if node.value != 'calendar_month_':
+                        self.assertIn(node.value, STRINGS)
+        for month in range(1, 13):
+            self.assertIn(f'calendar_month_{month}', STRINGS)
+
 
 if __name__ == '__main__':
     unittest.main()
