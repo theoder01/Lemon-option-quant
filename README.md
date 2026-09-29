@@ -56,6 +56,12 @@ The GUI currently covers opening analysis only. Remaining-holding-period return 
 
 See [GUI usage and limitations](docs/put_gui.md).
 
+English is the default GUI language. The **Language** selector switches immediately
+between **English** and **简体中文**, including existing result details and warnings,
+without changing inputs, recalculating, or writing to the historical database.
+The launcher remembers the choice in the ignored `data/gui_preferences.json` file.
+English remains the canonical language of the code and analysis messages.
+
 ### Collect Historical Data
 
 Start and log in to Futu OpenD with the appropriate market-data access, then run from the project root:
@@ -147,6 +153,8 @@ src/option_quant/
 ├── database.py
 ├── filters.py
 ├── futu_client.py
+├── gui_i18n.py
+├── gui_strings.py
 ├── put_gui.py
 ├── rate_limiter.py
 ├── retry.py
@@ -168,14 +176,14 @@ See [architecture and class diagrams](docs/architecture.md) for the collection a
 
 ## Tests
 
-Run these targeted offline tests from the project root:
+Run the automated suite from the project root:
 
 ```powershell
-python -B -m unittest discover -s tests -p "test_put*.py" -v
-python -B -m unittest discover -s tests -p test_futu_option_fees.py -v
+$env:PYTHONPATH = "$PWD/src"
+python -B -m pytest -q
 ```
 
-These cover return formulas, fee estimates, percentile selection, read-only database access, input validation, and GUI callbacks. GUI tests need a usable Tk environment and create hidden windows; database tests use temporary databases. The related suite contains 39 tests as of September 28, 2026.
+These cover return formulas, fee estimates, percentile selection, read-only database access, input validation, GUI callbacks, English/Chinese resources, immediate switching, and language preferences. GUI tests need a usable Tk environment and create hidden windows; database tests use temporary databases.
 
 Some older `tests/test_*.py` files are manually runnable examples or integration scripts that require OpenD or an existing historical database. They should not be treated as a fully offline unit-test suite.
 

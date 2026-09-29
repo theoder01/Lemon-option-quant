@@ -43,7 +43,7 @@ class PutPreviewTests(unittest.TestCase):
         self.assertEqual(result.trading_days, 3)
         self.assertEqual(result.annual.remaining_days, 30)
         self.assertAlmostEqual(result.annual.annualized_return, (200 - 2.5275) / 9000 * 365 / 30)
-        self.assertTrue(any("样本较少" in note for note in result.notes))
+        self.assertTrue(any("Historical samples or date coverage are limited" in note for note in result.notes))
 
     def test_excludes_future_same_time_calls_other_tickers_and_noncomparables(self):
         history = sample_history()

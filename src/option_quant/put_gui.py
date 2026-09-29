@@ -12,6 +12,11 @@ from tkinter import filedialog, ttk
 
 import pandas as pd
 
+from option_quant.gui_i18n import (
+    LANGUAGES, Translator, JoinedMessages, message, error_message,
+    canonical_message, load_language, save_language,
+)
+
 from option_quant.analytics.put_preview import (
     ReadOnlyOptionDatabase,
     analyze_put_preview,
@@ -23,8 +28,12 @@ from option_quant.time_utils import now_utc, get_trading_date
 
 
 class PutAnalysisWindow(ttk.Frame):
-    def __init__(self, master, database_path: Path):
+    def __init__(self, master, database_path: Path, preference_path: Path | None = None):
         super().__init__(master, padding=22)
+        self.preference_path = preference_path
+        self.translator = Translator(load_language(preference_path))
+        self._translated_variables = {}
+        self._detail_messages = ""
         self.pack(fill="both", expand=True)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(10, weight=1)
@@ -34,58 +43,72 @@ class PutAnalysisWindow(ttk.Frame):
         self.premium = tk.StringVar()
         self.strike = tk.StringVar()
         self.spot = tk.StringVar()
-        self.spot_source = tk.StringVar(value="现价可手动填写；历史参考价不是实时行情。")
-        self.status = tk.StringVar(value="填写一张标准 Put；所有价格以美元计。")
+        self.spot_source = self.translated(message('manual_spot_hint'))
+        self.status = self.translated(message('initial_status'))
         self.annual_text = tk.StringVar(value="—")
         self.percentile_text = tk.StringVar(value="—")
         self._loading = False
         self._historical_spot = False
 
-        ttk.Label(self, text="Lemon Option Quant", font=("Microsoft YaHei UI", 20, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
-        ttk.Label(self, text="卖 Put 开仓分析 · 1 张 / 100 股 · 本地历史库").grid(row=1, column=0, columnspan=3, sticky="w", pady=(3, 18))
-        ttk.Label(self, text="历史数据库").grid(row=2, column=0, sticky="w", padx=(0, 14))
+        ttk.Label(self, textvariable=self.translated(message('app_name')), font=("Microsoft YaHei UI", 20, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Label(self, textvariable=self.translated(message('subtitle'))).grid(row=1, column=0, columnspan=3, sticky="w", pady=(3, 18))
+        ttk.Label(self, textvariable=self.translated(message('database'))).grid(row=2, column=0, sticky="w", padx=(0, 14))
         ttk.Entry(self, textvariable=self.database_path).grid(row=2, column=1, sticky="ew")
-        ttk.Button(self, text="选择文件", command=self.choose_database).grid(row=2, column=2, padx=(8, 0))
+        ttk.Button(self, textvariable=self.translated(message('choose_file')), command=self.choose_database).grid(row=2, column=2, padx=(8, 0))
 
-        inputs = ttk.LabelFrame(self, text="合约输入", padding=14)
+        inputs = ttk.LabelFrame(self, padding=14)
+        inputs.configure(labelwidget=ttk.Label(inputs, textvariable=self.translated(message('contract_inputs'))))
         inputs.grid(row=3, column=0, columnspan=3, sticky="ew", pady=14)
         inputs.columnconfigure(1, weight=1)
         inputs.columnconfigure(3, weight=1)
-        ttk.Label(inputs, text="Underlying").grid(row=0, column=0, sticky="w", padx=(0, 12))
+        ttk.Label(inputs, textvariable=self.translated(message('underlying'))).grid(row=0, column=0, sticky="w", padx=(0, 12))
         self.ticker_box = ttk.Combobox(inputs, textvariable=self.underlying, width=20)
         self.ticker_box.grid(row=0, column=1, sticky="ew")
-        ttk.Label(inputs, text="到期日").grid(row=0, column=2, padx=(22, 12))
+        ttk.Label(inputs, textvariable=self.translated(message('expiry'))).grid(row=0, column=2, padx=(22, 12))
         self.expiry_box = ttk.Combobox(inputs, textvariable=self.expiry, width=20)
         self.expiry_box.grid(row=0, column=3, sticky="ew")
-        ttk.Label(inputs, text="可选择历史库中的日期，或输入 YYYY-MM-DD").grid(row=1, column=2, columnspan=2, sticky="w", padx=(22, 0), pady=(4, 8))
-        for column, label, variable in [(0, "权利金 / 股", self.premium), (2, "行权价 Strike", self.strike)]:
-            ttk.Label(inputs, text=label).grid(row=2, column=column, sticky="w", padx=(0 if column == 0 else 22, 12))
+        ttk.Label(inputs, textvariable=self.translated(message('expiry_hint'))).grid(row=1, column=2, columnspan=2, sticky="w", padx=(22, 0), pady=(4, 8))
+        for column, label, variable in [(0, message('premium'), self.premium), (2, message('strike'), self.strike)]:
+            ttk.Label(inputs, textvariable=self.translated(label)).grid(row=2, column=column, sticky="w", padx=(0 if column == 0 else 22, 12))
             ttk.Entry(inputs, textvariable=variable).grid(row=2, column=column + 1, sticky="ew")
-        ttk.Label(inputs, text="标的现价 / 股").grid(row=3, column=0, sticky="w", pady=(14, 0))
+        ttk.Label(inputs, textvariable=self.translated(message('spot'))).grid(row=3, column=0, sticky="w", pady=(14, 0))
         ttk.Entry(inputs, textvariable=self.spot).grid(row=3, column=1, sticky="ew", pady=(14, 0))
-        self.reference_button = ttk.Button(inputs, text="读取历史参考价与到期日", command=self.load_reference)
+        self.reference_button = ttk.Button(inputs, textvariable=self.translated(message('load_reference')), command=self.load_reference)
         self.reference_button.grid(row=3, column=2, columnspan=2, sticky="ew", padx=(22, 0), pady=(14, 0))
         ttk.Label(inputs, textvariable=self.spot_source, wraplength=740, foreground="#806019").grid(row=4, column=0, columnspan=4, sticky="w", pady=(10, 0))
-        self.analyze_button = ttk.Button(self, text="计算百分位与初始年化", command=self.calculate)
+        self.analyze_button = ttk.Button(self, textvariable=self.translated(message('calculate')), command=self.calculate)
         self.analyze_button.grid(row=4, column=0, columnspan=3, sticky="ew", ipady=6)
         ttk.Label(self, textvariable=self.status, wraplength=820, foreground="#805800").grid(row=5, column=0, columnspan=3, sticky="w", pady=10)
 
         cards = ttk.Frame(self)
         cards.grid(row=6, column=0, columnspan=3, sticky="ew")
-        for col, title, var in [(0, "历史权利金百分位", self.percentile_text), (1, "初始简单年化 · 扣开仓费", self.annual_text)]:
+        for col, title, var in [(0, message('historical_percentile'), self.percentile_text), (1, message('net_annualized_return'), self.annual_text)]:
             cards.columnconfigure(col, weight=1, uniform="card")
-            frame = ttk.LabelFrame(cards, text=title, padding=15)
+            frame = ttk.LabelFrame(cards, padding=15)
+            frame.configure(labelwidget=ttk.Label(frame, textvariable=self.translated(title)))
             frame.grid(row=0, column=col, sticky="nsew", padx=(0, 8) if col == 0 else (8, 0))
             ttk.Label(frame, textvariable=var, font=("Microsoft YaHei UI", 27, "bold"), foreground="#186a56").pack(anchor="w")
-        ttk.Label(self, text="比较：同标的 Put；行权价/现价 ±2 个百分点；DTE ±5 天。", wraplength=820).grid(row=7, column=0, columnspan=3, sticky="w", pady=(14, 3))
-        ttk.Label(self, text="百分位 = 历史权利金/股价严格低于当前比例的样本占比；不代表胜率。", wraplength=820).grid(row=8, column=0, columnspan=3, sticky="w")
-        ttk.Label(self, text="计算明细与数据覆盖", font=("Microsoft YaHei UI", 11, "bold")).grid(row=9, column=0, columnspan=3, sticky="w", pady=(14, 5))
+        ttk.Label(self, textvariable=self.translated(message('comparison')), wraplength=820).grid(row=7, column=0, columnspan=3, sticky="w", pady=(14, 3))
+        ttk.Label(self, textvariable=self.translated(message('percentile_explanation')), wraplength=820).grid(row=8, column=0, columnspan=3, sticky="w")
+        ttk.Label(self, textvariable=self.translated(message('details_heading')), font=("Microsoft YaHei UI", 11, "bold")).grid(row=9, column=0, columnspan=3, sticky="w", pady=(14, 5))
         self.details = tk.Text(self, height=11, wrap="word", relief="flat", padx=12, pady=10, font=("Microsoft YaHei UI", 10), background="#f3f5f4", state="disabled")
         self.details.grid(row=10, column=0, columnspan=3, sticky="nsew")
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.details.yview)
         scrollbar.grid(row=10, column=3, sticky="ns")
         self.details.configure(yscrollcommand=scrollbar.set)
-        ttk.Label(self, text="年化假设期权无价值到期且未接货，不是保证收益。接货须按行权价买入 100 股，损失可能远超权利金。", wraplength=820, foreground="#805800").grid(row=11, column=0, columnspan=3, sticky="w", pady=(12, 0))
+        ttk.Label(self, textvariable=self.translated(message('risk_notice')), wraplength=820, foreground="#805800").grid(row=11, column=0, columnspan=3, sticky="w", pady=(12, 0))
+
+        language_controls = ttk.Frame(self)
+        language_controls.grid(row=12, column=0, columnspan=3, sticky="e", pady=(10, 0))
+        ttk.Label(language_controls, textvariable=self.translated(message("language"))).pack(side="left", padx=8)
+        self.language = tk.StringVar(value=LANGUAGES[self.translator.language])
+        self.language_box = ttk.Combobox(language_controls, textvariable=self.language,
+                                       values=tuple(LANGUAGES.values()), state="readonly", width=14)
+        self.language_box.pack(side="left")
+        self.language_box.bind("<<ComboboxSelected>>", self.change_language)
+        self.preference_status = self.translated("")
+        ttk.Label(self, textvariable=self.preference_status).grid(row=13, column=0, columnspan=3, sticky="e")
+        self.winfo_toplevel().title(self.translator.render(message("window_title")))
 
         self.underlying.trace_add("write", self.ticker_changed)
         self.database_path.trace_add("write", self.database_changed)
@@ -93,25 +116,54 @@ class PutAnalysisWindow(ttk.Frame):
         for var in [self.expiry, self.premium, self.strike]:
             var.trace_add("write", self.invalidate)
         self.reload_symbols()
-        self.bind_all("<Return>", lambda event: self.calculate())
+        self.winfo_toplevel().bind("<Return>", self.on_return)
+
+    def on_return(self, event):
+        # Confirming a language choice must never trigger a calculation.
+        if event.widget is self.language_box:
+            return "break"
+        self.calculate()
+
+    def translated(self, value):
+        variable = tk.StringVar(master=self)
+        self.set_message(variable, value)
+        return variable
+
+    def set_message(self, variable, value):
+        self._translated_variables[str(variable)] = (variable, value)
+        variable.set(self.translator.render(value))
+
+    def change_language(self, event=None):
+        language = next(code for code, name in LANGUAGES.items()
+                        if name == self.language.get())
+        self.translator.language = language
+        self.winfo_toplevel().title(self.translator.render(message("window_title")))
+        for variable, value in self._translated_variables.values():
+            variable.set(self.translator.render(value))
+        self.set_details(self._detail_messages)
+        if not save_language(self.preference_path, language):
+            self.set_message(self.preference_status, message("preference_not_saved"))
+        else:
+            self.set_message(self.preference_status, "")
 
     def set_details(self, text):
+        self._detail_messages = text
         self.details.configure(state="normal")
         self.details.delete("1.0", "end")
-        self.details.insert("1.0", text)
+        self.details.insert("1.0", self.translator.render(text))
         self.details.configure(state="disabled")
 
     def invalidate(self, *args):
         self.annual_text.set("—")
-        self.percentile_text.set("—")
+        self.set_message(self.percentile_text, "—")
         self.set_details("")
-        self.status.set("输入已更新，请重新计算。")
+        self.set_message(self.status, message('inputs_updated'))
 
     def ticker_changed(self, *args):
         self.expiry_box.configure(values=())
         self.spot.set("")
         self._historical_spot = False
-        self.spot_source.set("标的已更改，请输入现价或重新读取历史参考价。")
+        self.set_message(self.spot_source, message('underlying_changed'))
         self.invalidate()
 
     def database_changed(self, *args):
@@ -121,11 +173,11 @@ class PutAnalysisWindow(ttk.Frame):
     def spot_changed(self, *args):
         if not self._loading:
             self._historical_spot = False
-            self.spot_source.set("现价来源：手动输入，请与权利金使用同一估值时刻。")
+            self.set_message(self.spot_source, message('manual_spot_source'))
         self.invalidate()
 
     def choose_database(self):
-        path = filedialog.askopenfilename(title="选择期权历史库", filetypes=[("SQLite", "*.db"), ("All", "*.*")])
+        path = filedialog.askopenfilename(title=self.translator.render(message('choose_database')), filetypes=[(self.translator.render(message("sqlite_files")), "*.db"), (self.translator.render(message("all_files")), "*.*")])
         if path:
             self.database_path.set(path)
             self.reload_symbols()
@@ -135,7 +187,7 @@ class PutAnalysisWindow(ttk.Frame):
             symbols = ReadOnlyOptionDatabase(self.database_path.get()).underlyings()
             self.ticker_box.configure(values=symbols)
         except Exception as error:
-            self.status.set(f"历史库暂不可用，仍可计算年化：{error}")
+            self.set_message(self.status, message('database_temporarily_unavailable', error=error_message(error)))
 
     def load_reference(self):
         try:
@@ -148,13 +200,13 @@ class PutAnalysisWindow(ttk.Frame):
             self._loading = True
             self.spot.set("" if price is None else f"{price:g}")
             self._historical_spot = price is not None
-            self.spot_source.set(f"历史参考价 · {underlying} · {timestamp}（UTC；非实时，可手动覆盖）" if price is not None else "未找到有效历史股价，请手动输入现价。")
-            self.status.set("已读取历史参考数据。到期日列表来自历史库，不保证包含当前全部挂牌合约。")
+            self.set_message(self.spot_source, message('historical_reference', underlying=underlying, timestamp=timestamp) if price is not None else message('no_historical_price'))
+            self.set_message(self.status, message('reference_loaded'))
         except Exception as error:
             self.invalidate()
             self.spot.set("")
             self.expiry_box.configure(values=())
-            self.status.set(f"读取失败，可手动输入继续：{error}")
+            self.set_message(self.status, message('reference_failed', error=error_message(error)))
         finally:
             self._loading = False
 
@@ -165,13 +217,13 @@ class PutAnalysisWindow(ttk.Frame):
             try:
                 expiry = date.fromisoformat(self.expiry.get().strip())
             except ValueError as error:
-                raise ValueError("到期日请使用 YYYY-MM-DD 格式。") from error
+                raise ValueError(Translator().render(message("invalid_expiry_format"))) from error
             database_note = ""
             try:
                 history = ReadOnlyOptionDatabase(self.database_path.get()).load_underlying(underlying)
             except Exception as error:
                 history = pd.DataFrame()
-                database_note = f"历史库不可用：{error}"
+                database_note = message('database_unavailable', error=error_message(error))
             as_of = now_utc()
             result = analyze_put_preview(
                 underlying=underlying, expiry=expiry, premium=self.premium.get(),
@@ -180,37 +232,37 @@ class PutAnalysisWindow(ttk.Frame):
             )
             annual = result.annual
             self.annual_text.set(f"{annual.annualized_return:.2%}")
-            self.percentile_text.set(f"{result.premium.premium_percentile:.1f}%" if result.premium else "暂无可比数据")
+            self.set_message(self.percentile_text, f"{result.premium.premium_percentile:.1f}%" if result.premium else message('no_comparable_data'))
             lines = [
-                f"{underlying} Put  |  {expiry} 到期  |  1 张 / 100 股",
-                f"估值时间：{as_of.isoformat()}  |  纽约日期：{get_trading_date(as_of)}",
-                f"剩余自然日：{annual.remaining_days:g}  |  行权现金担保：${annual.capital:,.2f}",
-                f"权利金收入：${float(self.premium.get()) * 100:,.2f}  |  估算开仓费：${annual.transaction_fee:.2f}  |  净权利金：${annual.potential_profit:,.2f}",
-                "费用：富途香港固定式套餐，2026-09-28 费率快照；实际账单取整可能不同。",
-                "年化 = 净权利金 / 全额行权现金担保 × 365 / 剩余自然日。",
+                message('contract_detail', underlying=underlying, expiry=expiry),
+                message('valuation_detail', as_of=as_of.isoformat(), trading_date=get_trading_date(as_of)),
+                message('capital_detail', remaining_days=annual.remaining_days, capital=annual.capital),
+                message('premium_detail', premium_income=float(self.premium.get()) * 100, transaction_fee=annual.transaction_fee, net_premium=annual.potential_profit),
+                message('fees_explanation'),
+                message('annual_formula'),
             ]
             if result.moneyness is not None:
-                lines.append(f"行权价/现价：{result.moneyness:.2%}")
+                lines.append(message('moneyness_detail', moneyness=result.moneyness))
             if result.premium:
                 p = result.premium
                 lines += [
-                    f"有效历史样本：{p.sample_count} 条快照，覆盖 {result.trading_days} 个交易日期（非独立交易样本）",
-                    f"历史区间：{result.sample_start} 至 {result.sample_end}",
-                    f"权利金/股价：当前 {p.current_premium_ratio:.3%}；历史中位数 {p.median_premium_ratio:.3%}；范围 {p.min_premium_ratio:.3%}–{p.max_premium_ratio:.3%}",
-                    "历史报价口径：last；输入权利金与历史 last 的成交条件可能不同。",
+                    message('sample_detail', sample_count=p.sample_count, trading_days=result.trading_days),
+                    message('history_range', start=result.sample_start, end=result.sample_end),
+                    message('ratio_detail', current=p.current_premium_ratio, median=p.median_premium_ratio, minimum=p.min_premium_ratio, maximum=p.max_premium_ratio),
+                    message('historical_quote_basis'),
                 ]
             if underlying == "US.IREN":
                 met = YieldThresholds().evaluate(annual) == "entry_yield_met"
-                lines.append("IREN 示例阈值：" + ("满足初始年化 >30%，仅供进一步判断。" if met else "未满足初始年化 >30%。"))
-            notes = list(result.notes)
+                lines.append(message('threshold_met') if met else message('threshold_not_met'))
+            notes = [canonical_message(note) for note in result.notes]
             if database_note:
                 notes.append(database_note)
             if self._historical_spot:
-                notes.append("当前使用历史参考股价，建议用与权利金同步的现价核对百分位。")
-            self.status.set("；".join(notes) if notes else "计算完成。百分位只反映历史相对位置，不是买卖建议。")
-            self.set_details("\n".join(lines))
+                notes.append(message('historical_spot_note'))
+            self.set_message(self.status, JoinedMessages(tuple(notes), "message_separator") if notes else message('calculation_complete'))
+            self.set_details(JoinedMessages(tuple(lines)))
         except Exception as error:
-            self.status.set(f"无法计算：{error}")
+            self.set_message(self.status, message('calculation_failed', error=error_message(error)))
 
 
 def create_root():
@@ -222,7 +274,7 @@ def create_root():
         except (AttributeError, OSError):
             pass
     root = tk.Tk()
-    root.title("Lemon Option Quant — Put 分析")
+    root.title(Translator().render(message("window_title")))
     scale = max(1, float(root.tk.call("tk", "scaling")) / (96 / 72))
     width = min(int(960 * scale), root.winfo_screenwidth() - 80)
     height = min(int(850 * scale), root.winfo_screenheight() - 100)
@@ -237,7 +289,8 @@ def create_root():
 
 def main(database_path=None):
     root = create_root()
-    PutAnalysisWindow(root, Path(database_path) if database_path else Path("data/options.db"))
+    PutAnalysisWindow(root, Path(database_path) if database_path else Path("data/options.db"),
+                      Path(__file__).resolve().parents[2] / "data" / "gui_preferences.json")
     root.mainloop()
 
 

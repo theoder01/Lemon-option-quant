@@ -2,38 +2,113 @@ Copyright © 2026 Bo Hu. All rights reserved.
 
 Created: September 28, 2026
 
-# Put 分析小窗口
+# Put Analysis Window
 
-在项目根目录运行 `python scripts/launch_put_gui.py`，使用项目已有 Python 环境即可，不新增第三方依赖。窗口使用 Python 自带 Tkinter；启动脚本会定位本项目源码及 `data/options.db`，也可在界面选择其它已有数据库。
+Run `python scripts/launch_put_gui.py` from the project environment. The launcher
+locates the source tree and `data/options.db`; the GUI can also select another
+existing database. Tkinter is included with Python. No new dependency is needed.
 
-输入一张标准美股 Put：Underlying（可输入 IREN 或 US.IREN）、到期日、每股权利金、行权价以及标的现价。点击“读取历史参考价与到期日”可填入最新历史股价并显示 UTC 时间；它不是实时行情。到期日下拉框来自历史库，支持手输 YYYY-MM-DD，不保证列出当前全部挂牌日期。权利金需手动输入，标的现价最好与权利金来自同一时刻。切换标的会清除旧现价。
+## Language
 
-点击“计算百分位与初始年化”得到：
+English is the default. Use the **Language** selector at the bottom of the window
+to choose **English** or **简体中文**. Labels, the title, current result details,
+warnings, reference-price descriptions, and validation errors update immediately.
+Inputs, numeric results, historical selections, and database contents are preserved;
+switching languages does not rerun analysis or reload history.
 
-- 历史权利金百分位：复用已有 `find_comparable_options` 与 `analyze_premium`。同标的历史 Put、行权价/股价相差不超过 2 个百分点、DTE 相差不超过 5 天，只用估值时间以前的数据。比较历史 last/股价与输入权利金/现价，严格小于当前比例的样本占比即百分位；相等不计入。
-- 初始年化：一张、100 股、全额行权现金担保，自动扣除富途香港固定式套餐估算开仓费。复用已验证的年化与费用模块。
-- 补充：有效快照样本数、覆盖交易日期数及区间、历史中位权利金比例、现金担保、净权利金、费用、DTE、价内外程度。IREN 显示已有 >30% 示例阈值是否满足，非交易指令。
+The launcher saves only `{"language": "en"}` or `{"language": "zh_CN"}` in
+`data/gui_preferences.json`, separate from SQLite. This ignored local file persists
+the preference for this checkout. Missing, unreadable, malformed, and unsupported
+preferences default to English. A save failure displays a notice and does not stop
+the language change. A previously running version needs one relaunch to load this
+update; subsequent language changes do not require restarting.
 
-年化使用纽约当天至到期日的自然日数、ACT/365 简单年化。第一版不支持当天到期；日内精确截止时刻留待后续。仅支持一张未调整的标准 Put，不处理调整合约或组合。
+## Workflow and calculation conventions
 
-历史库只读，不采集行情、不连接 OpenD、不下单。数据库缺失、标的无历史、现价未填或无匹配样本时，仍可计算年化；百分位显示不可用而非虚构为零。现有库主要采集价外 Put，价内 Put 暂不输出百分位。无效历史数值、看涨合约和未来快照均不进入比较。
+Enter one standard US equity Put: underlying (IREN or US.IREN), expiration date,
+premium per share, strike price, and underlying spot price. All amounts are USD.
+**Load Historical Price and Expirations** fills the latest historical spot price
+and displays its UTC timestamp. It is not live data. Expirations from history may
+not include all currently listed contracts; YYYY-MM-DD can also be entered.
+Use spot and premium from the same valuation time. Changing the ticker clears
+the old spot price.
 
-百分位按快照行加权，不按日期等权，也不是独立交易胜率。少于 20 条快照或少于 5 个交易日期时显示样本不足提示；这些是提示阈值，不是统计显著性保证。历史 last 与当前可成交报价可能不同。年化假设无价值到期且未接货，不保证实现。
+**Calculate Percentile and Initial Annualized Return** displays:
 
-测试：
+- Historical premium percentile: existing comparable-option and premium analysis,
+  using past Put snapshots for the same underlying, strike/spot within 2 percentage
+  points and DTE within 5 days. Only premium/spot ratios strictly below the current
+  ratio count; ties do not. This is not a win probability.
+- Net initial annualized return: one contract / 100 shares, full strike cash
+  collateral, after estimated Futu HK fixed-plan opening fees. Existing fee and
+  annualized-return calculations are unchanged.
+- Sample count, trading-date coverage, history range, premium ratios, collateral,
+  net premium, fees, DTE, and moneyness. The existing IREN >30% example threshold is
+  advisory, not a trading instruction.
+
+Annualization uses calendar days from today's New York date to expiration and
+simple ACT/365. Same-day expiration and adjusted or multi-leg contracts are not
+supported. Return assumes worthless expiration without assignment; it is not
+guaranteed. Assignment requires buying 100 shares at the strike, and losses may
+exceed the premium.
+
+The database is read-only. The window does not collect quotes, connect to OpenD,
+or place orders. Missing history, spot, or comparable samples still allow the
+annualized calculation. Percentile is unavailable rather than zero. In-the-money
+Puts have no percentile because the existing collection covers out-of-the-money
+Puts. Invalid values, calls, and future snapshots are excluded.
+
+Snapshots are row-weighted, not equally weighted by day or independent trades.
+Fewer than 20 snapshots or 5 trading dates triggers a limited-history warning.
+Historical last prices may differ from currently executable quotes.
+
+## Localization architecture
+
+`put_gui.py` contains one widget tree and one set of callbacks. `gui_strings.py`
+contains English and Simplified Chinese resources under stable English keys.
+`gui_i18n.py` provides retained `Message` values, nested formatting, joining,
+English fallback, and preference loading/saving. The window retains these values
+alongside display variables and renders them again when the language changes.
+Formatted result messages retain their original numeric values and timestamps.
+
+Business logic never imports GUI resources or receives a language. Existing
+`put_preview.py` notes and validation messages are now English; their conditions
+and calculations are unchanged. The GUI adapter maps those English messages to
+translation keys. Update that mapping/catalog when changing a business message;
+tests cover current note and validation literals. New languages require resources
+and a selector name, without changing analysis logic.
+
+All application-owned GUI prose is centralized. Numeric values, ticker symbols,
+paths, timestamps, the brand name, and technical terms such as USD/DTE/UTC remain
+language-independent. Unknown OS/library diagnostics are retained verbatim inside
+a translated error wrapper. Native file-dialog buttons and shell content use the
+operating-system language; the application supplies a translated title and filters.
+
+## Validation
+
+From the repository root:
 
 ```powershell
 $env:PYTHONPATH = "$PWD/src"
-python -B -m unittest discover -s tests -p test_put_preview.py -v
-python -B -m unittest discover -s tests -p test_put_gui.py -v
+python -B -m pytest -q
 ```
 
-GUI 测试需要可用的 Tk 环境，使用隐藏测试窗口。手动检查：启动→读取 IREN 历史参考价→选择到期日→输入行权价与权利金→计算；再切换标的或输入无效数字，旧结果应清空。
+Tk tests need a desktop-capable Tk environment. Tests cover catalog/placeholder
+parity, English defaults and fallback, preferences and failure handling, translated
+errors/reference text/file-dialog arguments, and immediate switching after a
+calculation. A real temporary SQLite fixture is compared byte-for-byte before and
+after switching; mocks assert no analysis or database call occurs on switching.
+Existing premium, fee, comparable-option, and annualized-return tests remain part
+of the suite. GUI source checks reject literal widget text and Chinese prose.
 
-## 与分析模块的关系
+Manual check: launch, load reference data, enter a contract, calculate, switch
+languages both ways, and confirm the numeric results and inputs stay fixed. Test
+invalid input and missing history in both languages, then relaunch to check the
+preference. Native dialogs follow the OS locale as described above.
 
-启动入口为 `scripts/launch_put_gui.py`，窗口类为 `PutAnalysisWindow`。界面调用 `analytics/put_preview.py` 聚合已有历史比较、权利金统计及初始年化功能。`ReadOnlyOptionDatabase` 复用 `OptionDatabase` 的查询接口，以 SQLite `mode=ro` 打开文件，不新建缺失数据库，使用完后关闭连接。
+The window currently exposes new-position Put analysis only. Existing-position
+remaining annualized return and implied-volatility analysis remain in their
+existing modules and are not added to the GUI by this localization task.
 
-当前窗口仅用于开仓分析，尚未展示剩余持有期年化；该计算已在 `put_annualized_return.py` 中实现。界面也不展示现有 IV 分析模块的结果，不新增 Risk Analysis、Event Analysis 或自动交易。
-
-[项目说明](../README.md) · [架构与类图](architecture.md) · [年化与手续费口径](put_annualized_return.md) · [数据结构](data_schema.md)
+[Project](../README.md) · [Architecture](architecture.md) ·
+[Return and fee conventions](put_annualized_return.md) · [Data schema](data_schema.md)

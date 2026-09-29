@@ -52,7 +52,7 @@ def normalize_underlying(value: str) -> str:
     if not value.startswith("US."):
         value = "US." + value
     if not re.fullmatch(r"US\.[A-Z][A-Z0-9.\-]*", value):
-        raise ValueError("请输入美股代码，例如 IREN 或 US.NVDA。")
+        raise ValueError("Enter a US stock symbol, such as IREN or US.NVDA.")
     return value
 
 
@@ -60,20 +60,20 @@ def _finite(value: float, label: str, positive: bool = False) -> float:
     try:
         number = float(value)
     except (TypeError, ValueError, OverflowError) as error:
-        raise ValueError(f"{label}必须是有效数字。") from error
+        raise ValueError(f"{label} must be a valid number.") from error
     if isinstance(value, bool) or not math.isfinite(number) or number < 0 or (positive and number == 0):
-        raise ValueError(f"{label}必须{'大于零' if positive else '不小于零'}，且为有限数字。")
+        raise ValueError(f"{label} must be finite and {'positive' if positive else 'nonnegative'}.")
     return number
 
 
 def historical_rows(history: pd.DataFrame, underlying: str, as_of: datetime) -> pd.DataFrame:
     """Only past rows of the requested underlying; malformed dates are excluded."""
     if as_of.utcoffset() is None:
-        raise ValueError("估值时间必须带时区。")
+        raise ValueError("Valuation time must be timezone-aware.")
     if history.empty:
         return history.copy()
     if not {"underlying", "snapshot_time"}.issubset(history.columns):
-        raise ValueError("历史库缺少 underlying 或 snapshot_time 字段。")
+        raise ValueError("History is missing underlying or snapshot_time fields.")
     rows = history.copy()
     rows["_time"] = pd.to_datetime(rows["snapshot_time"], format="mixed", utc=True, errors="coerce")
     return rows[(rows["underlying"] == underlying) & (rows["_time"] < as_of)].copy()
@@ -119,14 +119,14 @@ def analyze_put_preview(
     Percentile is snapshot-row weighted, using historical last / stock price.
     """
     underlying = normalize_underlying(underlying)
-    premium = _finite(premium, "每股权利金")
-    strike = _finite(strike, "行权价", positive=True)
+    premium = _finite(premium, "Premium per share")
+    strike = _finite(strike, "Strike price", positive=True)
     if as_of.utcoffset() is None:
-        raise ValueError("估值时间必须带时区。")
+        raise ValueError("Valuation time must be timezone-aware.")
     if type(expiry) is not date or expiry <= get_trading_date(as_of):
-        raise ValueError("到期日须晚于纽约今天；第一版暂不计算到期日当天的合约。")
+        raise ValueError("Expiration must be after today in New York; same-day expiration is not supported.")
     if spot is not None:
-        spot = _finite(spot, "标的现价", positive=True)
+        spot = _finite(spot, "Spot price", positive=True)
     annual = calculate_initial_annualized_return(
         strike=strike, premium=premium, as_of=get_trading_date(as_of), expiration=expiry,
     )
@@ -136,15 +136,15 @@ def analyze_put_preview(
     days = 0
     start = end = None
     if spot is None:
-        notes.append("补充标的现价后可计算历史百分位；年化不需要现价。")
+        notes.append("Enter a spot price to calculate historical percentile; annualized return does not require it.")
     elif moneyness > 1:
-        notes.append("当前为价内 Put；现有历史库只采集价外 Put，暂不提供历史百分位。")
+        notes.append("This Put is in the money; history only collects out-of-the-money Puts, so percentile is unavailable.")
     elif history.empty:
-        notes.append("没有该标的历史记录；仍可计算初始年化。")
+        notes.append("No history for this underlying; initial annualized return is still available.")
     else:
         required = {"last", "strike", "underlying_price", "dte", "option_code"}
         if not required.issubset(history.columns):
-            notes.append("历史库缺少价格、合约代码或 DTE 字段，无法计算百分位。")
+            notes.append("History is missing price, option code, or DTE fields; percentile is unavailable.")
         else:
             rows = historical_rows(history, underlying, as_of)
             # Explicitly exclude calls; the existing collector stores standard puts.
@@ -166,7 +166,7 @@ def analyze_put_preview(
                     days = dates.nunique()
                     start, end = str(dates.min()), str(dates.max())
                     if result.sample_count < 20 or days < 5:
-                        notes.append("历史样本较少或覆盖天数较短，百分位仅供参考。")
+                        notes.append("Historical samples or date coverage are limited; percentile is for reference only.")
             if result is None:
-                notes.append("没有满足相近价内外程度和 DTE 的有效历史 Put 样本。")
+                notes.append("No valid historical Put samples with similar moneyness and DTE.")
     return PutPreview(underlying, annual, result, moneyness, days, start, end, tuple(notes))
