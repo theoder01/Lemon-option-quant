@@ -100,6 +100,59 @@ class InputUXTests(unittest.TestCase):
                 self.root.clipboard_append(previous_clipboard)
             self.root.update()
 
+    def test_numeric_editing_when_tk_icu_iterator_cannot_open(self):
+        # Reproduce the actual desktop failure, which ordinary event_generate
+        # tests miss when ICU happens to work in the test process.
+        for name in ('startOfCluster', 'endOfCluster'):
+            self.root.tk.call('rename', f'tk::{name}', f'tk::original_{name}')
+            self.root.tk.call('proc', f'tk::{name}', 'args',
+                              'error {cannot open ICU iterator, errorcode: 2}')
+        try:
+            for key, entry in self.window.numeric_entries.items():
+                with self.subTest(field=key):
+                    self.focus(entry)
+                    entry.delete(0, 'end')
+                    entry.insert(0, '1.92')
+                    entry.icursor('end')
+                    for expected in ('1.9', '1.', '1', ''):
+                        entry.event_generate('<BackSpace>')
+                        self.assertEqual(entry.get(), expected)
+                    entry.event_generate('<BackSpace>')
+                    self.assertEqual(entry.get(), '')
+                    for deletion in ('<BackSpace>', '<Delete>'):
+                        entry.insert(0, '2.35')
+                        entry.event_generate('<Control-a>')
+                        entry.event_generate(deletion)
+                        self.assertEqual(entry.get(), '')
+                    entry.insert(0, '1.92')
+                    entry.icursor(0)
+                    entry.event_generate('<Delete>')
+                    self.assertEqual(entry.get(), '.92')
+                    entry.event_generate('<Right>')
+                    self.assertEqual(entry.index('insert'), 1)
+                    entry.event_generate('<Shift-Right>')
+                    self.assertEqual(entry.selection_get(), '9')
+                    entry.event_generate('<Delete>')
+                    self.assertEqual(entry.get(), '.2')
+                    entry.event_generate('<KeyPress>', keysym='3')
+                    self.assertEqual(entry.get(), '.32')
+                    entry.event_generate('<Left>')
+                    entry.event_generate('<Shift-Left>')
+                    self.assertEqual(entry.selection_get(), '.')
+                    entry.event_generate('<BackSpace>')
+                    self.assertEqual(entry.get(), '32')
+                    entry.icursor('end')
+                    entry.event_generate('<Delete>')
+                    self.assertEqual(entry.get(), '32')
+                    entry.event_generate('<Control-a>')
+                    entry.event_generate('<BackSpace>')
+                    entry.insert(0, '2.35')
+                    self.assertEqual(entry.get(), '2.35')
+        finally:
+            for name in ('startOfCluster', 'endOfCluster'):
+                self.root.tk.call('rename', f'tk::{name}', '')
+                self.root.tk.call('rename', f'tk::original_{name}', f'tk::{name}')
+
     @patch('option_quant.put_gui.now_utc', return_value=NOW)
     @patch('option_quant.put_gui.ReadOnlyOptionDatabase.load_underlying', return_value=iv_history())
     def test_invalid_values_are_rejected_only_on_calculation(self, *mocks):

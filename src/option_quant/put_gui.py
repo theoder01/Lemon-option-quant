@@ -161,12 +161,57 @@ class PutAnalysisWindow(ttk.Frame):
 
     def numeric_entry(self, master, key, variable):
         # Editing must allow empty/partial text. Existing analysis validates only
-        # when Calculate is invoked; native Tk bindings handle deletion and paste.
+        # when Calculate is invoked. Keep native text editing where possible.
         entry = ttk.Entry(master, textvariable=variable, validate="none")
         for sequence in ('<Control-a>', '<Control-A>'):
             entry.bind(sequence, self.select_all_numeric)
+        for sequence, action in (
+            ('<BackSpace>', 'Backspace'), ('<Delete>', 'Delete'),
+            ('<<PrevChar>>', 'prevchar'), ('<<NextChar>>', 'nextchar'),
+            ('<<SelectPrevChar>>', 'selectprevchar'),
+            ('<<SelectNextChar>>', 'selectnextchar'),
+        ):
+            entry.bind(sequence, lambda event, action=action: self.edit_numeric(event, action))
         self.numeric_entries[key] = entry
         return entry
+
+    @staticmethod
+    def edit_numeric(event, action):
+        entry = event.widget
+        selecting = action.startswith('select')
+        direction = action.removeprefix('select')
+        try:
+            if action in ('Backspace', 'Delete'):
+                entry.tk.call(f'ttk::entry::{action}', str(entry))
+            else:
+                entry.tk.call('ttk::entry::Extend' if selecting else 'ttk::entry::Move',
+                              str(entry), direction)
+        except tk.TclError as error:
+            if 'cannot open ICU iterator' not in str(error):
+                raise
+            # Tk 9 can fail before deleting/moving when its ICU iterator cannot
+            # open. Numeric text can still be edited using entry character
+            # indices. Do not change Tk's global bindings or parse the value.
+            if entry.instate(('disabled',)) or entry.instate(('readonly',)):
+                return 'break'
+            cursor = entry.index('insert')
+            if action in ('Backspace', 'Delete'):
+                if entry.selection_present():
+                    entry.delete('sel.first', 'sel.last')
+                elif action == 'Backspace' and cursor > 0:
+                    entry.delete(cursor - 1, cursor)
+                elif action == 'Delete':
+                    entry.delete(cursor, cursor + 1)
+            else:
+                target = max(0, min(entry.index('end'),
+                                    cursor + (-1 if direction == 'prevchar' else 1)))
+                if selecting:
+                    entry.tk.call('ttk::entry::ExtendTo', str(entry), target)
+                else:
+                    entry.icursor(target)
+                    entry.selection_clear()
+            entry.tk.call('ttk::entry::See', str(entry))
+        return 'break'
 
     @staticmethod
     def select_all_numeric(event):
