@@ -223,3 +223,7 @@ Risk Analysis and Event Analysis remain deferred. The application does not perfo
 ## Disclaimer
 
 This project is intended for quantitative research and educational purposes only. It does not constitute financial or investment advice. Cash-secured Puts can be assigned before expiry, require purchasing shares at the strike, and can lose far more than the premium received.
+
+## Local Windows executable
+
+See [Windows build instructions](docs/windows-build.md) for the reproducible PyInstaller onedir build and runtime database paths.

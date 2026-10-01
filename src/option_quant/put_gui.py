@@ -18,6 +18,8 @@ from option_quant.gui_i18n import (
     canonical_message, load_language, save_language,
 )
 from option_quant.date_picker import DatePicker
+from option_quant.gui_branding import apply_branding
+from option_quant.runtime_paths import default_database_path, preference_path
 from option_quant.gui_theme import COLORS, FONT, PageViewport, apply_theme, scale_for
 
 from option_quant.analytics.put_preview import (
@@ -337,7 +339,9 @@ class PutAnalysisWindow(AnalysisPage):
         header=ttk.Frame(self,padding=(self.px(24),self.px(12)))
         header.grid(row=0,column=0,sticky='ew')
         header.columnconfigure(1,weight=1)
-        ttk.Label(header,textvariable=self.translated(message('brand_mark')),style='Accent.TLabel').grid(row=0,column=0,padx=(0,self.px(12)))
+        self.brand_image = apply_branding(self.winfo_toplevel(), self.px(32))
+        self.brand_label = ttk.Label(header, image=self.brand_image)
+        self.brand_label.grid(row=0,column=0,padx=(0,self.px(12)))
         ttk.Label(header,textvariable=self.translated(message('app_name')),style='Brand.TLabel').grid(row=0,column=1,sticky='w')
         ttk.Label(header,textvariable=self.translated(message('language'))).grid(row=0,column=2,padx=self.px(12))
         self.language=tk.StringVar(value=LANGUAGES[self.translator.language])
@@ -708,8 +712,8 @@ def create_root():
 
 def main(database_path=None):
     root = create_root()
-    PutAnalysisWindow(root, Path(database_path) if database_path else Path("data/options.db"),
-                      Path(__file__).resolve().parents[2] / "data" / "gui_preferences.json")
+    PutAnalysisWindow(root, Path(database_path) if database_path else default_database_path(),
+                      preference_path())
     root.mainloop()
 
 

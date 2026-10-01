@@ -2,16 +2,16 @@
 #
 # Created: September 28, 2026
 
-"""Launch from any working directory using this checkout's source and database."""
+"""Launch the same GUI from source or the local Windows bundle."""
 
 from pathlib import Path
 import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
+if not getattr(sys, 'frozen', False):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from option_quant.put_gui import main
 
 
 if __name__ == "__main__":
-    main(PROJECT_ROOT / "data" / "options.db")
+    main()

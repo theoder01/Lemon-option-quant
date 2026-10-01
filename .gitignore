@@ -93,3 +93,7 @@ env/
 
 .DS_Store
 Thumbs.db
+# Local Windows packaging outputs (keep the spec and build script tracked)
+build/
+dist/
+.venv-build/

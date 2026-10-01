@@ -1,0 +1,5 @@
+# Local Windows build tools; runtime requirements remain in requirements.txt.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.8
+# Technical PNG/ICO derivatives only; the GUI loads them with native Tk.
+Pillow==12.3.0
