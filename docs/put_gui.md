@@ -8,9 +8,43 @@ Run `python scripts/launch_put_gui.py` from the project environment. The launche
 locates the source tree and `data/options.db`; the GUI can also select another
 existing database. Tkinter is included with Python. No new dependency is needed.
 
+## Appearance and layout
+
+Both pages use the same light workbench styling: a pale background, white
+surfaces, neutral result numbers, a dark primary action, and a small lemon-color
+brand/navigation accent. Result colors do not express trade quality. Ordinary
+status text is neutral; missing/limited data and validation errors are distinct
+and retain their explanatory text.
+
+Wide windows place a compact input panel beside the three result cards and
+calculation details. Below approximately 980 logical pixels of content width,
+inputs and results stack vertically. Content is capped at 1440 logical pixels
+on wider screens. The launcher supports a minimum 760 × 620 logical window,
+scaled to the display; a page scrollbar keeps all content accessible. Tab focus
+scrolls interactive fields into view. Native numeric controls and the existing
+calendar remain in use; no global keyboard bindings are replaced.
+
+The language selector stays in the header. New Position shows the local database
+filename with **Choose File** and **Full path** controls; the latter reveals a
+read-only, selectable path. The **Load Historical References** action retains
+its existing behavior. Existing Position has no database dependency.
+
+Calculation Details use a selectable, read-only text view with aligned labels
+and values, grouped into capital/fees/returns, contract/position, and historical
+reference/coverage where applicable. It has its own scroll control. All existing
+detail messages are retained; the financial group is shown first. Empty results
+show an instruction instead of fabricated numbers. Risk conditions remain in
+an always-expanded block outside the details view; on small windows the page
+may need scrolling to reach that block.
+
+`gui_theme.py` centralizes the palette, typography, ttk states and scrollable
+page container. The canvas only hosts native widgets; it does not draw custom
+inputs. Presentation tests cover both languages at 100%, 150% and 200% scaling,
+wide/minimum layouts, focus traversal, status states and retained detail text.
+
 ## Language
 
-English is the default. Use the **Language** selector at the bottom of the window
+English is the default. Use the **Language** selector at the top right of the window
 to choose **English** or **简体中文**. Labels, the title, current result details,
 warnings, reference-price descriptions, and validation errors update immediately.
 Inputs, numeric results, historical selections, and database contents are preserved;

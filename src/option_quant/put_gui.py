@@ -18,6 +18,7 @@ from option_quant.gui_i18n import (
     canonical_message, load_language, save_language,
 )
 from option_quant.date_picker import DatePicker
+from option_quant.gui_theme import COLORS, FONT, PageViewport, apply_theme, scale_for
 
 from option_quant.analytics.put_preview import (
     ReadOnlyOptionDatabase,
@@ -120,46 +121,12 @@ class AnalysisPage(ttk.Frame):
     def set_message(self, variable, value):
         self._translated_variables[str(variable)] = (variable, value)
         variable.set(self.translator.render(value))
+        if hasattr(self,'status_label') and variable is self.status:
+            self.refresh_status_style()
 
-    def set_details(self, text):
-        self._detail_messages = text
-        self.details.configure(state="normal")
-        self.details.delete("1.0", "end")
-        self.details.insert("1.0", self.translator.render(text))
-        self.details.configure(state="disabled")
-
-    def create_cards(self, parent, specs):
-        cards = ttk.Frame(parent)
-        self.result_cards = []
-        for col, (title, variable, extras, color) in enumerate(specs):
-            cards.columnconfigure(col, weight=1, uniform="card")
-            frame = ttk.LabelFrame(cards, padding=15)
-            self.result_cards.append(frame)
-            heading = ttk.Label(frame, textvariable=self.translated(message(title)), wraplength=230)
-            frame.configure(labelwidget=heading)
-            frame.grid(row=0, column=col, sticky="nsew", padx=(0, 8) if col == 0 else (8, 0))
-            value = ttk.Label(frame, textvariable=variable, wraplength=230,
-                              font=("Microsoft YaHei UI", 27, "bold"), foreground=color)
-            value.pack(anchor="w", fill="x")
-            labels = [heading, value]
-            for extra in extras:
-                label = ttk.Label(frame, textvariable=extra, wraplength=230)
-                label.pack(anchor="w", fill="x", pady=(3, 0))
-                labels.append(label)
-            frame.bind("<Configure>", lambda event, labels=labels: self.wrap_card(event, labels))
-        return cards
-
-    def create_details(self, parent, row):
-        self.details = tk.Text(parent, height=11, wrap="word", relief="flat", padx=12,
-                               pady=10, font=("Microsoft YaHei UI", 10),
-                               background="#f3f5f4", state="disabled")
-        self.details.grid(row=row, column=0, columnspan=3, sticky="nsew")
-        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=self.details.yview)
-        scrollbar.grid(row=row, column=3, sticky="ns")
-        self.details.configure(yscrollcommand=scrollbar.set)
 
     def expiry_controls(self, parent):
-        controls = ttk.Frame(parent)
+        controls = ttk.Frame(parent, style="Surface.TFrame")
         controls.columnconfigure(0, weight=1)
         self.expiry_box = ttk.Combobox(controls, textvariable=self.expiry, width=14)
         self.expiry_box.grid(row=0, column=0, sticky="ew")
@@ -169,16 +136,186 @@ class AnalysisPage(ttk.Frame):
         return controls
 
 
+    def px(self, value):
+        return round(value * scale_for(self))
+
+    def label(self, parent, value, style='Body.TLabel'):
+        label = ttk.Label(parent, textvariable=self.translated(value), style=style,
+                          wraplength=self.px(270), justify='left')
+        label.bind('<Configure>', lambda e: label.configure(wraplength=max(60, e.width)))
+        return label
+
+    def build_workspace(self, viewport, heading, caption):
+        self.viewport = viewport
+        body = viewport.body
+        self.label(body, message(heading), 'Page.TLabel').grid(row=0,column=0,sticky='ew',pady=(self.px(12),self.px(4)))
+        self.label(body, message(caption), 'TLabel').grid(row=1,column=0,sticky='ew',pady=(0,self.px(20)))
+        body.columnconfigure(0,weight=1)
+        self.columns = ttk.Frame(body)
+        self.columns.grid(row=2,column=0,sticky='nsew')
+        self.input_panel = ttk.Frame(self.columns,style='Surface.TFrame',padding=self.px(20))
+        self.output_panel = ttk.Frame(self.columns)
+        self.input_panel.columnconfigure(0,weight=1)
+        self.output_panel.columnconfigure(0,weight=1)
+        self.input_panel.grid(row=0,column=0,sticky='new',padx=(0,self.px(20)))
+        self.output_panel.grid(row=0,column=1,sticky='new')
+        self._stacked = None
+        def arrange(width):
+            stacked = width < self.px(980)
+            if stacked == self._stacked: return
+            self._stacked = stacked
+            self.columns.columnconfigure(0,weight=1 if stacked else 0,minsize=0 if stacked else self.px(320))
+            self.columns.columnconfigure(1,weight=0 if stacked else 1)
+            self.input_panel.grid_configure(row=0,column=0,sticky='new',padx=(0,0 if stacked else self.px(20)))
+            self.output_panel.grid_configure(row=1 if stacked else 0,column=0 if stacked else 1,
+                                            pady=(self.px(20) if stacked else 0,0))
+        viewport._layout = arrange
+        self.label(self.input_panel,message('contract_inputs'),'Heading.TLabel').grid(row=0,column=0,sticky='ew',pady=(0,self.px(16)))
+
+    def field(self, row, key, variable=None, kind='number'):
+        frame = ttk.Frame(self.input_panel,style='Surface.TFrame')
+        frame.grid(row=row,column=0,sticky='ew',pady=(0,self.px(12)))
+        frame.columnconfigure(0,weight=1)
+        self.label(frame,message(key),'Muted.TLabel').grid(row=0,column=0,sticky='ew',pady=(0,self.px(5)))
+        if kind=='expiry':
+            widget=self.expiry_controls(frame)
+        elif kind=='ticker':
+            widget=ttk.Combobox(frame,textvariable=variable,width=18)
+            self.ticker_box=widget
+        else:
+            widget=self.numeric_entry(frame,key,variable)
+            widget.configure(width=18)
+        widget.grid(row=1,column=0,sticky='ew')
+        return widget
+
+    def build_results(self, specs, existing=False):
+        out=self.output_panel
+        self.create_cards(out,specs).grid(row=0,column=0,sticky='ew')
+        status_frame=ttk.Frame(out,style='Surface.TFrame',padding=self.px(12))
+        status_frame.grid(row=1,column=0,sticky='ew',pady=(self.px(12),self.px(12)))
+        self.status_label=ttk.Label(status_frame,textvariable=self.status,style='Muted.TLabel',wraplength=self.px(600))
+        self.status_label.pack(fill='x')
+        self.status_label.bind('<Configure>',lambda e:self.status_label.configure(wraplength=max(60,e.width)))
+        self.details_panel=ttk.Frame(out,style='Surface.TFrame',padding=self.px(20))
+        self.details_panel.grid(row=2,column=0,sticky='ew')
+        self.details_panel.columnconfigure(0,weight=1)
+        self.label(self.details_panel,message('calculation_details'),'Heading.TLabel').grid(row=0,column=0,sticky='ew',pady=(0,self.px(12)))
+        self.empty_label=self.label(self.details_panel,message('results_empty'),'Muted.TLabel')
+        self.empty_label.grid(row=1,column=0,sticky='ew',pady=(self.px(20),self.px(20)))
+        self.create_details(self.details_panel,2)
+        self.details.grid_remove()
+        self.detail_scrollbar.grid_remove()
+        risk=ttk.Frame(out,style='Surface.TFrame',padding=self.px(16))
+        risk.grid(row=3,column=0,sticky='ew',pady=self.px(12))
+        self.label(risk,message('risk_heading'),'Heading.TLabel').pack(fill='x',pady=(0,self.px(6)))
+        self.label(risk,canonical_message(RISK_NOTICE),'Muted.TLabel').pack(fill='x')
+        if existing:
+            self.label(risk,message('remaining_context_notice'),'Muted.TLabel').pack(fill='x',pady=(self.px(8),0))
+        else:
+            self.label(risk,message('comparison'),'Muted.TLabel').pack(fill='x',pady=(self.px(8),0))
+            self.label(risk,message('percentile_explanation'),'Muted.TLabel').pack(fill='x',pady=(self.px(4),0))
+
+    def create_cards(self, parent, specs):
+        cards=ttk.Frame(parent)
+        self.result_cards=[]
+        for col,(title,variable,extras,*unused) in enumerate(specs):
+            cards.columnconfigure(col,weight=1,uniform='card')
+            frame=ttk.Frame(cards,style='Surface.TFrame',padding=self.px(12))
+            frame.grid(row=0,column=col,sticky='nsew',padx=(0,self.px(8)) if col<2 else 0)
+            frame.columnconfigure(0,weight=1)
+            self.result_cards.append(frame)
+            heading=self.label(frame,message(title),'Muted.TLabel')
+            heading.grid(row=0,column=0,sticky='ew')
+            value=ttk.Label(frame,textvariable=variable,style='Metric.TLabel',wraplength=self.px(180))
+            value.grid(row=1,column=0,sticky='ew',pady=(self.px(12),self.px(4)))
+            value.bind('<Configure>',lambda e,w=value:w.configure(wraplength=max(60,e.width)))
+            # Reserve equal title height while permitting natural value wrapping.
+            frame.rowconfigure(0,minsize=self.px(32))
+            for index,extra in enumerate(extras):
+                label=ttk.Label(frame,textvariable=extra,style='Muted.TLabel',wraplength=self.px(180))
+                label.grid(row=index+2,column=0,sticky='ew',pady=(self.px(4),0))
+                label.bind('<Configure>',lambda e,w=label:w.configure(wraplength=max(60,e.width)))
+        return cards
+
+    def create_details(self,parent,row):
+        self.details=tk.Text(parent,height=11,width=1,wrap='word',relief='flat',borderwidth=0,
+                             font=(FONT,10),background=COLORS['surface'],foreground=COLORS['text'],
+                             padx=0,pady=self.px(4),state='disabled',takefocus=True,
+                             highlightthickness=1,highlightbackground=COLORS['surface'],highlightcolor=COLORS['focus'])
+        self.details.grid(row=row,column=0,sticky='ew')
+        self.detail_scrollbar=ttk.Scrollbar(parent,orient='vertical',command=self.details.yview)
+        self.detail_scrollbar.grid(row=row,column=1,sticky='ns')
+        self.details.configure(yscrollcommand=self.detail_scrollbar.set)
+        self.details.tag_configure('group',font=(FONT,10,'bold'),foreground=COLORS['text'],spacing1=self.px(16),spacing3=self.px(8))
+        self.details.tag_configure('label',foreground=COLORS['muted'])
+        self.details.tag_configure('value',foreground=COLORS['text'])
+        self.details.tag_configure('row',spacing3=self.px(9))
+        self.details.tag_configure('note',foreground=COLORS['muted'],spacing3=self.px(10))
+        self.details.configure(tabs=(self.px(210),))
+
+    def set_details(self,text):
+        self._detail_messages=text
+        self.details.configure(state='normal')
+        self.details.delete('1.0','end')
+        items=text.messages if isinstance(text,JoinedMessages) else (text,)
+        groups={name: [] for name in ('detail_returns','detail_contract','detail_history')}
+        for item in items:
+            key=getattr(item,'key','')
+            group=('detail_history' if key.startswith(('iv_','sample_','history_','ratio_','historical_'))
+                   else 'detail_returns' if key in ('capital_detail','premium_detail','existing_cash','existing_returns','existing_fee_source','fees_explanation','annual_formula','avoided_fee_explanation')
+                   else 'detail_contract')
+            rendered=self.translator.render(item)
+            if rendered: groups[group].append(rendered)
+        for group,paragraphs in groups.items():
+            if not paragraphs: continue
+            self.details.insert('end',self.translator.render(message(group))+'\n','group')
+            for paragraph in paragraphs:
+                for line in paragraph.replace(' | ','\n').splitlines():
+                    separator='：' if '：' in line else ': '
+                    if separator in line and len(line.split(separator,1)[0])<45:
+                        label,value=line.split(separator,1)
+                        self.details.insert('end',label+separator,'label')
+                        self.details.insert('end','\t'+value+'\n',('value','row'))
+                    else:
+                        self.details.insert('end',line+'\n','note')
+        self.details.configure(state='disabled')
+        self.details.yview_moveto(0)
+        if self.translator.render(text):
+            self.empty_label.grid_remove()
+            self.details.grid()
+            self.detail_scrollbar.grid()
+        else:
+            self.details.grid_remove()
+            self.detail_scrollbar.grid_remove()
+            self.empty_label.grid()
+
+    def refresh_status_style(self):
+        def keys(value):
+            if isinstance(value,JoinedMessages):
+                return {key for part in value.messages for key in keys(part)}
+            return {getattr(value,'key','')}
+        value=self._translated_variables.get(str(self.status),(None,''))[1]
+        names=keys(value)
+        style=('Error.TLabel' if names & {'calculation_failed','reference_failed'} else
+               'Warning.TLabel' if any('unavailable' in k or 'limited' in k or 'insufficient' in k for k in names) else 'Muted.TLabel')
+        self.status_label.configure(style=style)
+
+    def toggle_database_path(self):
+        if self.database_entry.winfo_manager(): self.database_entry.grid_remove()
+        else: self.database_entry.grid()
+
+
 class PutAnalysisWindow(AnalysisPage):
     def __init__(self, master, database_path: Path, preference_path: Path | None = None):
-        super().__init__(master, padding=22)
+        super().__init__(master, padding=0)
+        apply_theme(self.winfo_toplevel())
         self.preference_path = preference_path
         self.translator = Translator(load_language(preference_path))
         self._translated_variables = {}
         self._detail_messages = ""
         self.pack(fill="both", expand=True)
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(3, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
         self.database_path = tk.StringVar(value=str(database_path))
         self.underlying = tk.StringVar(value="US.IREN")
         self.expiry = tk.StringVar()
@@ -197,71 +334,60 @@ class PutAnalysisWindow(AnalysisPage):
         self.calendar_window = None
         self.numeric_entries = {}
 
-        ttk.Label(self, textvariable=self.translated(message('app_name')), font=("Microsoft YaHei UI", 20, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
-        self.notebook = ttk.Notebook(self)
-        self.notebook.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=(12, 0))
-        self.new_page = ttk.Frame(self.notebook, padding=8)
-        self.new_page.columnconfigure(1, weight=1)
-        self.new_page.rowconfigure(10, weight=1)
-        self.notebook.add(self.new_page, text=self.translator.render(message('new_position')))
-        ttk.Label(self.new_page, textvariable=self.translated(message('subtitle'))).grid(row=1, column=0, columnspan=3, sticky="w", pady=(3, 18))
-        ttk.Label(self.new_page, textvariable=self.translated(message('database'))).grid(row=2, column=0, sticky="w", padx=(0, 14))
-        ttk.Entry(self.new_page, textvariable=self.database_path).grid(row=2, column=1, sticky="ew")
-        ttk.Button(self.new_page, textvariable=self.translated(message('choose_file')), command=self.choose_database).grid(row=2, column=2, padx=(8, 0))
-
-        inputs = ttk.LabelFrame(self.new_page, padding=14)
-        inputs.configure(labelwidget=ttk.Label(inputs, textvariable=self.translated(message('contract_inputs'))))
-        inputs.grid(row=3, column=0, columnspan=3, sticky="ew", pady=14)
-        inputs.columnconfigure(1, weight=1)
-        inputs.columnconfigure(3, weight=1)
-        ttk.Label(inputs, textvariable=self.translated(message('underlying'))).grid(row=0, column=0, sticky="w", padx=(0, 12))
-        self.ticker_box = ttk.Combobox(inputs, textvariable=self.underlying, width=20)
-        self.ticker_box.grid(row=0, column=1, sticky="ew")
-        ttk.Label(inputs, textvariable=self.translated(message('expiry'))).grid(row=0, column=2, padx=(22, 12))
-        expiration_controls = self.expiry_controls(inputs)
-        expiration_controls.grid(row=0, column=3, sticky="ew")
-        ttk.Label(inputs, textvariable=self.translated(message('expiry_hint'))).grid(row=1, column=2, columnspan=2, sticky="w", padx=(22, 0), pady=(4, 8))
-        for column, key, variable in [(0, 'premium', self.premium), (2, 'strike', self.strike)]:
-            label = message(key)
-            ttk.Label(inputs, textvariable=self.translated(label)).grid(row=2, column=column, sticky="w", padx=(0 if column == 0 else 22, 12))
-            entry = self.numeric_entry(inputs, key, variable)
-            entry.grid(row=2, column=column + 1, sticky="ew")
-        ttk.Label(inputs, textvariable=self.translated(message('spot'))).grid(row=3, column=0, sticky="w", pady=(14, 0))
-        self.numeric_entry(inputs, 'spot', self.spot).grid(row=3, column=1, sticky="ew", pady=(14, 0))
-        self.reference_button = ttk.Button(inputs, textvariable=self.translated(message('load_reference')), command=self.load_reference)
-        self.reference_button.grid(row=3, column=2, columnspan=2, sticky="ew", padx=(22, 0), pady=(14, 0))
-        ttk.Label(inputs, textvariable=self.spot_source, wraplength=740, foreground="#806019").grid(row=4, column=0, columnspan=4, sticky="w", pady=(10, 0))
-        self.analyze_button = ttk.Button(self.new_page, textvariable=self.translated(message('calculate')), command=self.calculate)
-        self.analyze_button.grid(row=4, column=0, columnspan=3, sticky="ew", ipady=6)
-        ttk.Label(self.new_page, textvariable=self.status, wraplength=820, foreground="#805800").grid(row=5, column=0, columnspan=3, sticky="w", pady=10)
-
-        cards = self.create_cards(self.new_page, [
-            ('historical_percentile', self.percentile_text, [], '#186a56'),
-            ('net_annualized_return', self.annual_text, [], '#186a56'),
-            ('historical_iv_percentile', self.iv_percentile_text,
-             [self.iv_current_text, self.translated(message('iv_reference_only')), self.iv_status_text], '#465767'),
+        header=ttk.Frame(self,padding=(self.px(24),self.px(12)))
+        header.grid(row=0,column=0,sticky='ew')
+        header.columnconfigure(1,weight=1)
+        ttk.Label(header,textvariable=self.translated(message('brand_mark')),style='Accent.TLabel').grid(row=0,column=0,padx=(0,self.px(12)))
+        ttk.Label(header,textvariable=self.translated(message('app_name')),style='Brand.TLabel').grid(row=0,column=1,sticky='w')
+        ttk.Label(header,textvariable=self.translated(message('language'))).grid(row=0,column=2,padx=self.px(12))
+        self.language=tk.StringVar(value=LANGUAGES[self.translator.language])
+        self.language_box=ttk.Combobox(header,textvariable=self.language,values=tuple(LANGUAGES.values()),state='readonly',width=10)
+        self.language_box.grid(row=0,column=3)
+        self.language_box.bind('<<ComboboxSelected>>',self.change_language)
+        self.preference_status=self.translated('')
+        ttk.Label(self,textvariable=self.preference_status).grid(row=1,column=0,sticky='e')
+        self.notebook=ttk.Notebook(self)
+        self.notebook.grid(row=2,column=0,sticky='nsew',padx=self.px(24),pady=(0,self.px(16)))
+        self.new_page=PageViewport(self.notebook)
+        self.notebook.add(self.new_page,text=self.translator.render(message('new_position')))
+        self.build_workspace(self.new_page,'new_heading','new_caption')
+        self.field(1,'underlying',self.underlying,'ticker')
+        self.field(2,'expiry',kind='expiry')
+        self.field(3,'premium',self.premium)
+        self.field(4,'strike',self.strike)
+        self.field(5,'spot',self.spot)
+        self.reference_button=ttk.Button(self.input_panel,textvariable=self.translated(message('load_reference')),command=self.load_reference)
+        self.reference_button.grid(row=6,column=0,sticky='ew',pady=(self.px(4),self.px(8)))
+        spot_label=ttk.Label(self.input_panel,textvariable=self.spot_source,style='Muted.TLabel',wraplength=self.px(270))
+        spot_label.grid(row=7,column=0,sticky='ew',pady=(0,self.px(12)))
+        spot_label.bind('<Configure>',lambda e:spot_label.configure(wraplength=max(60,e.width)))
+        self.analyze_button=ttk.Button(self.input_panel,textvariable=self.translated(message('calculate')),style='Primary.TButton',command=self.calculate)
+        self.analyze_button.grid(row=8,column=0,sticky='ew',pady=(0,self.px(20)))
+        ttk.Separator(self.input_panel).grid(row=9,column=0,sticky='ew',pady=(0,self.px(16)))
+        self.label(self.input_panel,message('local_data'),'Muted.TLabel').grid(row=10,column=0,sticky='ew')
+        self.database_name=tk.StringVar(value=Path(self.database_path.get()).name)
+        name_label=ttk.Label(self.input_panel,textvariable=self.database_name,style='Body.TLabel',wraplength=self.px(270))
+        name_label.grid(row=11,column=0,sticky='ew',pady=(self.px(4),self.px(8)))
+        name_label.bind('<Configure>',lambda e:name_label.configure(wraplength=max(60,e.width)))
+        actions=ttk.Frame(self.input_panel,style='Surface.TFrame')
+        actions.grid(row=12,column=0,sticky='ew')
+        self.database_button=ttk.Button(actions,textvariable=self.translated(message('choose_file')),command=self.choose_database)
+        self.database_button.pack(side='left')
+        self.path_button=ttk.Button(actions,textvariable=self.translated(message('show_path')),command=self.toggle_database_path)
+        self.path_button.pack(side='left',padx=(self.px(8),0))
+        self.database_entry=ttk.Entry(self.input_panel,textvariable=self.database_path,width=18,state='readonly')
+        self.database_entry.grid(row=13,column=0,sticky='ew',pady=(self.px(8),0))
+        self.database_entry.grid_remove()
+        self.database_path.trace_add('write',lambda *args:self.database_name.set(Path(self.database_path.get()).name))
+        self.build_results([
+            ('historical_percentile',self.percentile_text,[]),
+            ('net_annualized_return',self.annual_text,[]),
+            ('historical_iv_percentile',self.iv_percentile_text,[self.iv_current_text,self.translated(message('iv_reference_only')),self.iv_status_text]),
         ])
-        cards.grid(row=6, column=0, columnspan=3, sticky="ew")
-        ttk.Label(self.new_page, textvariable=self.translated(message('comparison')), wraplength=820).grid(row=7, column=0, columnspan=3, sticky="w", pady=(14, 3))
-        ttk.Label(self.new_page, textvariable=self.translated(message('percentile_explanation')), wraplength=820).grid(row=8, column=0, columnspan=3, sticky="w")
-        ttk.Label(self.new_page, textvariable=self.translated(message('details_heading')), font=("Microsoft YaHei UI", 11, "bold")).grid(row=9, column=0, columnspan=3, sticky="w", pady=(14, 5))
-        self.create_details(self.new_page, 10)
-        ttk.Label(self.new_page, textvariable=self.translated(message('risk_notice')), wraplength=820, foreground="#805800").grid(row=11, column=0, columnspan=3, sticky="w", pady=(12, 0))
-
-        self.existing_page = ExistingPositionPage(self.notebook, self)
-        self.notebook.add(self.existing_page, text=self.translator.render(message('existing_position')))
-        self.notebook.bind('<<NotebookTabChanged>>', self.page_changed)
-
-        language_controls = ttk.Frame(self)
-        language_controls.grid(row=12, column=0, columnspan=3, sticky="e", pady=(10, 0))
-        ttk.Label(language_controls, textvariable=self.translated(message("language"))).pack(side="left", padx=8)
-        self.language = tk.StringVar(value=LANGUAGES[self.translator.language])
-        self.language_box = ttk.Combobox(language_controls, textvariable=self.language,
-                                       values=tuple(LANGUAGES.values()), state="readonly", width=14)
-        self.language_box.pack(side="left")
-        self.language_box.bind("<<ComboboxSelected>>", self.change_language)
-        self.preference_status = self.translated("")
-        ttk.Label(self, textvariable=self.preference_status).grid(row=13, column=0, columnspan=3, sticky="e")
+        self.new_page.bind_content()
+        self.existing_page=ExistingPositionPage(self.notebook,self)
+        self.notebook.add(self.existing_page,text=self.translator.render(message('existing_position')))
+        self.notebook.bind('<<NotebookTabChanged>>',self.page_changed)
         self.winfo_toplevel().title(self.translator.render(message("window_title")))
 
         self.underlying.trace_add("write", self.ticker_changed)
@@ -460,7 +586,7 @@ class ExistingPositionPage(AnalysisPage):
     """Current-position inputs and presentation; financial values come from analytics."""
 
     def __init__(self, master, owner):
-        super().__init__(master, padding=8)
+        super().__init__(master, padding=0)
         self.translator = owner.translator
         self._translated_variables = owner._translated_variables
         self._detail_messages = ''
@@ -479,46 +605,22 @@ class ExistingPositionPage(AnalysisPage):
         self.profit_text = tk.StringVar(self, value='—')
         self.collateral_text = tk.StringVar(self, value='—')
         self.status = self.translated(message('existing_initial_status'))
-        ttk.Label(self, textvariable=self.translated(message('existing_heading')),
-                  font=('Microsoft YaHei UI', 14, 'bold')).grid(row=0, column=0, columnspan=3, sticky='w', pady=(0, 12))
-        inputs = ttk.LabelFrame(self, padding=14)
-        inputs.configure(labelwidget=ttk.Label(inputs, textvariable=self.translated(message('contract_inputs'))))
-        inputs.grid(row=1, column=0, columnspan=3, sticky='ew')
-        inputs.columnconfigure(1, weight=1)
-        inputs.columnconfigure(3, weight=1)
-        ttk.Label(inputs, textvariable=self.translated(message('underlying'))).grid(row=0, column=0, sticky='w', padx=(0, 12))
-        self.ticker_box = ttk.Combobox(inputs, textvariable=self.underlying, width=20,
-                                      values=('US.NVDA', 'US.GOOG', 'US.IREN', 'US.SPCX'))
-        self.ticker_box.grid(row=0, column=1, sticky='ew')
-        ttk.Label(inputs, textvariable=self.translated(message('expiry'))).grid(row=0, column=2, sticky='w', padx=(22, 12))
-        self.expiry_controls(inputs).grid(row=0, column=3, sticky='ew')
-        for row, col, key, variable in [
-            (1, 0, 'strike_per_share', self.strike),
-            (1, 2, 'buyback_premium', self.close_premium),
-            (2, 0, 'contracts', self.contracts),
-            (2, 2, 'current_spot', self.spot),
-        ]:
-            ttk.Label(inputs, textvariable=self.translated(message(key)), wraplength=200).grid(
-                row=row, column=col, sticky='w', padx=(0 if col == 0 else 22, 12), pady=(12, 0))
-            self.numeric_entry(inputs, key, variable).grid(row=row, column=col+1, sticky='ew', pady=(12, 0))
-        ttk.Label(inputs, textvariable=self.translated(message('buyback_hint')), wraplength=780).grid(
-            row=3, column=0, columnspan=4, sticky='w', pady=(12, 0))
-        self.analyze_button = ttk.Button(self, textvariable=self.translated(message('calculate_remaining')), command=self.calculate)
-        self.analyze_button.grid(row=2, column=0, columnspan=3, sticky='ew', ipady=6, pady=(14, 0))
-        ttk.Label(self, textvariable=self.status, wraplength=820, foreground='#805800').grid(
-            row=3, column=0, columnspan=3, sticky='w', pady=10)
-        self.create_cards(self, [
-            ('remaining_annual', self.annual_text, [], '#465767'),
-            ('remaining_profit', self.profit_text, [], '#465767'),
-            ('gross_collateral', self.collateral_text, [], '#465767'),
-        ]).grid(row=4, column=0, columnspan=3, sticky='ew')
-        ttk.Label(self, textvariable=self.translated(message('calculation_details')),
-                  font=('Microsoft YaHei UI', 11, 'bold')).grid(row=5, column=0, columnspan=3, sticky='w', pady=(14, 5))
-        self.create_details(self, 6)
-        ttk.Label(self, textvariable=self.translated(canonical_message(RISK_NOTICE)),
-                  wraplength=820, foreground='#805800').grid(row=7, column=0, columnspan=3, sticky='w', pady=(12, 0))
-        ttk.Label(self, textvariable=self.translated(message('remaining_context_notice')),
-                  wraplength=820).grid(row=8, column=0, columnspan=3, sticky='w', pady=(6, 0))
+        viewport=PageViewport(self)
+        viewport.pack(fill='both',expand=True)
+        self.build_workspace(viewport,'existing_heading','existing_caption')
+        self.field(1,'underlying',self.underlying,'ticker').configure(values=('US.NVDA','US.GOOG','US.IREN','US.SPCX'))
+        self.field(2,'expiry',kind='expiry')
+        for row,key,variable in [(3,'strike_per_share',self.strike),(4,'buyback_premium',self.close_premium),
+                                 (5,'contracts',self.contracts),(6,'current_spot',self.spot)]:
+            self.field(row,key,variable)
+        self.label(self.input_panel,message('buyback_hint'),'Muted.TLabel').grid(row=7,column=0,sticky='ew',pady=(0,self.px(16)))
+        self.analyze_button=ttk.Button(self.input_panel,textvariable=self.translated(message('calculate_remaining')),style='Primary.TButton',command=self.calculate)
+        self.analyze_button.grid(row=8,column=0,sticky='ew')
+        self.build_results([
+            ('remaining_annual',self.annual_text,[]),('remaining_profit',self.profit_text,[]),
+            ('gross_collateral',self.collateral_text,[]),
+        ],existing=True)
+        viewport.bind_content()
         for variable in (self.underlying, self.expiry, self.strike, self.close_premium, self.contracts, self.spot):
             variable.trace_add('write', self.invalidate)
 
@@ -568,7 +670,7 @@ class ExistingPositionPage(AnalysisPage):
             self.profit_text.set(f'${result.potential_profit:,.2f}')
             self.collateral_text.set(f'${result.gross_collateral:,.2f}')
             lines = [
-                message('contract_detail', underlying=underlying, expiry=expiry),
+                message('existing_contract_detail', underlying=underlying, expiry=expiry),
                 message('existing_prices', spot=spot, strike=strike, premium=premium),
                 message('existing_size', contracts=result.contracts, days=result.remaining_days),
                 message('existing_cash', collateral=result.gross_collateral,
@@ -596,14 +698,11 @@ def create_root():
     root = tk.Tk()
     root.title(Translator().render(message("window_title")))
     scale = max(1, float(root.tk.call("tk", "scaling")) / (96 / 72))
-    width = min(int(960 * scale), root.winfo_screenwidth() - 80)
-    height = min(int(1000 * scale), root.winfo_screenheight() - 100)
+    width = min(int(1280 * scale), root.winfo_screenwidth() - 80)
+    height = min(int(940 * scale), root.winfo_screenheight() - 100)
     root.geometry(f"{width}x{height}")
-    root.minsize(min(int(880 * scale), width), min(int(920 * scale), height))
-    style = ttk.Style(root)
-    style.theme_use("clam")
-    style.configure(".", font=("Microsoft YaHei UI", 10))
-    style.configure("TButton", padding=7)
+    root.minsize(min(int(760 * scale), width), min(int(620 * scale), height))
+    apply_theme(root)
     return root
 
 

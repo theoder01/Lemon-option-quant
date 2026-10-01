@@ -68,6 +68,8 @@ entry threshold, or buy/sell recommendation is introduced.
 
 The same window has **New Position** and **Existing Position** tabs. Switching tabs preserves each page's inputs and results. Existing Position accepts underlying, expiration, strike per share, current executable buyback premium per share (normally Ask), positive integer contracts (default 1), and current underlying price per share. Its three cards show remaining annualized return, remaining potential profit, and gross collateral. Details include buyback cost, avoided buy-to-close fee and source, period return, and OTM/ATM/ITM with strike/spot moneyness. Spot is context only and never enters the remaining-return calculation. Existing Position does not load historical percentiles or ask for opening cash flows. Both pages share immediate English/Chinese switching, numeric editing, and the date picker. Same-day expiration, adjusted contracts, and live quotes are not supported; New Position still uses one contract.
 
+Both tabs share a light workbench layout, with inputs beside results on wide windows and stacked on smaller windows. The header contains the language selector; calculation details group capital, fees, returns, and reference information. Styling does not encode trade recommendations.
+
 See [GUI usage and limitations](docs/put_gui.md).
 
 English is the default GUI language. The **Language** selector switches immediately

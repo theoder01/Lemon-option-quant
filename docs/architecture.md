@@ -313,6 +313,13 @@ The independent return module additionally supports aware datetimes with fractio
 
 The targeted offline suite covers fee rates and minimums, return formulas, date handling, comparable filtering, read-only SQLite access, and Tk callbacks. See the [README test commands](../README.md#tests). Tests use temporary databases and hidden Tk windows; they do not need OpenD.
 
+`gui_theme.py` provides the light palette, native ttk styles and `PageViewport`.
+The latter bounds content width, scrolls the native child widgets, and reveals
+focused inputs without global bindings. `AnalysisPage` shares the adaptive
+input/result layout, status presentation and grouped details rendering. This
+presentation layer uses retained translation messages and analytics values;
+financial calculations and historical selection are unchanged.
+
 The single `PutAnalysisWindow` owns a `ttk.Notebook` with New Position and
 Existing Position frames. `AnalysisPage` shares the existing numeric-entry and
 date-picker behavior, result-card layout, details rendering, and translation

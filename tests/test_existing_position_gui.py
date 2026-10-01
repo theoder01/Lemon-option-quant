@@ -40,7 +40,7 @@ class ExistingPositionTests(unittest.TestCase):
         self.window.change_language()
 
     def details(self):
-        return self.page.details.get('1.0', 'end')
+        return self.page.details.get('1.0', 'end').replace('\t', '')
 
     def test_calls_remaining_analytics_with_buy_estimator_and_no_history(self):
         with patch('option_quant.put_gui.calculate_remaining_annualized_return',
@@ -91,6 +91,8 @@ class ExistingPositionTests(unittest.TestCase):
         self.assertEqual(self.page.result.gross_collateral, 30000)
         self.assertEqual(self.page.result.potential_profit, self.page.result.transaction_fee)
         self.assertIn('Current buyback cost: $0.00', self.details())
+        self.assertIn('Contracts: 3', self.details())
+        self.assertNotIn('1 contract / 100 shares', self.details())
 
     def test_invalid_inputs_clear_stale_results_and_translate(self):
         cases = {
@@ -133,7 +135,7 @@ class ExistingPositionTests(unittest.TestCase):
             self.assertIn('剩余潜在收益', self.details())
             self.assertIn('富途香港', self.details())
             self.assertIn('计算剩余收益', self.page.analyze_button['text'])
-            self.assertIn('计算百分位', self.window.analyze_button['text'])
+            self.assertIn('计算分析', self.window.analyze_button['text'])
             self.language('en')
             calculate.assert_not_called()
         self.assertEqual(self.details(), english)
