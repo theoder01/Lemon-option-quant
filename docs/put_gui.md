@@ -67,8 +67,7 @@ between English and Simplified Chinese. It uses only Python's standard-library
 - Historical IV percentile: the selected Put's latest stored IV compared with
   valid prior premium-comparable snapshots. This third card is reference only.
 - Sample count, trading-date coverage, history range, premium ratios, collateral,
-  net premium, fees, DTE, and moneyness. The existing IREN >30% example threshold is
-  advisory, not a trading instruction.
+  net premium, fees, DTE, and moneyness.
 
 Annualization uses calendar days from today's New York date to expiration and
 simple ACT/365. Same-day expiration and adjusted or multi-leg contracts are not
@@ -134,7 +133,7 @@ preference. Native dialogs follow the OS locale as described above.
 
 The third result card shows **Historical IV Percentile**, **Current IV**, and
 **Reference only**. This supplements premium analysis and net annualized return;
-it does not change the IREN example threshold, classify entries, generate a
+it does not classify entries, generate a
 buy/sell recommendation, or combine the percentiles into a score. No manual IV
 input or separate analysis page is added.
 

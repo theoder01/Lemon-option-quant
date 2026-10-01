@@ -63,11 +63,6 @@ STRINGS = {'app_name': {'en': 'Lemon Option Quant', 'zh_CN': 'Lemon Option Quant
  'historical_quote_basis': {'en': 'Historical quote basis: last; execution conditions may differ from the '
                                   'entered premium.',
                             'zh_CN': '历史报价口径：last；输入权利金与历史 last 的成交条件可能不同。'},
- 'threshold_met': {'en': 'IREN example threshold: initial annualized return >30% met; for further assessment '
-                         'only.',
-                   'zh_CN': 'IREN 示例阈值：满足初始年化 >30%，仅供进一步判断。'},
- 'threshold_not_met': {'en': 'IREN example threshold: initial annualized return >30% not met.',
-                       'zh_CN': 'IREN 示例阈值：未满足初始年化 >30%。'},
  'historical_spot_note': {'en': 'Using a historical spot price. Verify the percentile with a spot price from '
                                 'the same time as the premium.',
                           'zh_CN': '当前使用历史参考股价，建议用与权利金同步的现价核对百分位。'},

@@ -203,8 +203,9 @@ classDiagram
     class PutAnnualizedReturnResult {
         +phase
         +remaining_days
-        +capital_basis
-        +capital
+        +contracts
+        +gross_collateral
+        +period_return
         +potential_profit
         +annualized_return
         +transaction_fee
@@ -223,11 +224,6 @@ classDiagram
         +total
         +schedule
     }
-    class YieldThresholds {
-        +open_above
-        +consider_close_below
-        +evaluate(result)
-    }
 
     TtkFrame <|-- PutAnalysisWindow
     OptionDatabase <|-- ReadOnlyOptionDatabase
@@ -244,10 +240,9 @@ classDiagram
     PutPreview --> PutAnnualizedReturnResult : annual
     PutPreview --> PremiumAnalysisResult : optional premium
     PutAnnualizedReturnResult --> OptionFeeEstimate : optional fee_estimate
-    PutAnalysisWindow --> YieldThresholds : IREN example assessment
 ```
 
-`PutPreviewAnalysis` corresponds to `analytics/put_preview.py`; the other module boxes correspond to their snake-case filenames. `OptionFeeEstimate.total` is a computed property. `YieldThresholds` belongs to `put_annualized_return.py`. IV analysis remains an independent existing module and is not connected to this GUI.
+`PutPreviewAnalysis` corresponds to `analytics/put_preview.py`; the other module boxes correspond to their snake-case filenames. `OptionFeeEstimate.total` is a computed property. IV analysis remains an independent existing module and is not connected to this GUI.
 
 ## GUI Data Flow
 
@@ -268,7 +263,7 @@ flowchart TD
     Match --> Stats[Normalized premium percentile and coverage]
     Stats --> Result[PutPreview]
     Return --> Result
-    Result --> Display[Results, sample warnings, and IREN threshold]
+    Result --> Display[Results and sample warnings]
 ```
 
 Selecting a historical quote fills the stock-price field and labels it with its timestamp. It does not retrieve live market data. Changing the ticker clears the old stock price; changing calculation inputs invalidates prior results. The expiration selector is editable and populated from history, not a live option chain.
@@ -287,10 +282,9 @@ The analysis function computes initial return independently of historical availa
 | Sample warning | Fewer than 20 comparable rows or fewer than 5 distinct trading dates |
 | GUI annualization | Initial net premium / full strike collateral × 365 / remaining calendar days |
 | Fees | Futu HK fixed plan, snapshot checked 2026-09-28; calculated estimate rather than exact statement replication |
-| Thresholds | IREN GUI uses >30% initial example; independent module also supports <20% remaining example |
-| Remaining return | Current buyback premium plus avoided closing fee, less any expiry fee; no original premium or opening fee |
+| Remaining return | Current buyback premium plus avoided closing fee; no original premium or opening fee |
 
-The independent return module supports more than the GUI: multiple contracts, aware datetimes with fractional remaining days, manually overridden fees, and `CapitalBasis.NET_CAPITAL`. The GUI uses the default `GROSS_COLLATERAL` basis. See [return definitions](put_annualized_return.md) for exact formulas and the distinction between net capital and cash required on assignment.
+The independent return module supports more than the GUI: multiple contracts, aware datetimes with fractional remaining days, and manually overridden fees. Both phases always use full cash-secured collateral (strike × 100 × contracts). See [return definitions](put_annualized_return.md) for exact formulas and fee semantics.
 
 ## Storage and Time
 
@@ -302,6 +296,6 @@ The independent return module supports more than the GUI: multiple contracts, aw
 
 ## Verification and Scope
 
-The targeted offline suite covers fee rates and minimums, return formulas, strict thresholds, date handling, comparable filtering, read-only SQLite access, and Tk callbacks. See the [README test commands](../README.md#tests). Tests use temporary databases and hidden Tk windows; they do not need OpenD.
+The targeted offline suite covers fee rates and minimums, return formulas, date handling, comparable filtering, read-only SQLite access, and Tk callbacks. See the [README test commands](../README.md#tests). Tests use temporary databases and hidden Tk windows; they do not need OpenD.
 
 GUI integration currently ends at opening analysis. A holding-period view can reuse `calculate_remaining_annualized_return` later. Automatic trading, Risk Analysis, and Event Analysis are not implemented as part of this work. A displayed annualized return assumes worthless expiry without assignment; the UI includes an assignment-risk notice.

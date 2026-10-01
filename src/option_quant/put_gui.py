@@ -24,7 +24,6 @@ from option_quant.analytics.put_preview import (
     latest_reference,
     normalize_underlying,
 )
-from option_quant.analytics.put_annualized_return import YieldThresholds
 from option_quant.time_utils import now_utc, get_trading_date
 
 
@@ -355,7 +354,7 @@ class PutAnalysisWindow(ttk.Frame):
             lines = [
                 message('contract_detail', underlying=underlying, expiry=expiry),
                 message('valuation_detail', as_of=as_of.isoformat(), trading_date=get_trading_date(as_of)),
-                message('capital_detail', remaining_days=annual.remaining_days, capital=annual.capital),
+                message('capital_detail', remaining_days=annual.remaining_days, capital=annual.gross_collateral),
                 message('premium_detail', premium_income=float(self.premium.get()) * 100, transaction_fee=annual.transaction_fee, net_premium=annual.potential_profit),
                 message('fees_explanation'),
                 message('annual_formula'),
@@ -370,9 +369,6 @@ class PutAnalysisWindow(ttk.Frame):
                     message('ratio_detail', current=p.current_premium_ratio, median=p.median_premium_ratio, minimum=p.min_premium_ratio, maximum=p.max_premium_ratio),
                     message('historical_quote_basis'),
                 ]
-            if underlying == "US.IREN":
-                met = YieldThresholds().evaluate(annual) == "entry_yield_met"
-                lines.append(message('threshold_met') if met else message('threshold_not_met'))
             self.show_iv_reference(result.iv, lines)
             notes = [canonical_message(note) for note in result.notes]
             if database_note:

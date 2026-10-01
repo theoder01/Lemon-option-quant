@@ -2,13 +2,11 @@
 #
 # Created: September 28, 2026
 
-from dataclasses import replace
+from inspect import signature
 from datetime import date, datetime, timedelta, timezone
 import unittest
 
 from option_quant.analytics.put_annualized_return import (
-    CapitalBasis,
-    YieldThresholds,
     actual_remaining_days,
     calculate_initial_annualized_return,
     calculate_remaining_annualized_return,
@@ -29,33 +27,61 @@ class PutAnnualizedReturnTests(unittest.TestCase):
         return calculate_remaining_annualized_return(**(dict(self.args, close_premium=0.5, closing_fee=0) | changes))
 
     def test_initial_gross_and_total_fees(self):
-        result = self.initial(contracts=2, opening_fee=3, expiration_fee=1)
+        result = self.initial(contracts=2, opening_fee=3)
         self.assertEqual(result.gross_collateral, 10000)
-        self.assertEqual(result.capital, 10000)
-        self.assertEqual(result.potential_profit, 396)
-        self.assertAlmostEqual(result.annualized_return, 396 / 10000 * 365 / 30)
+        self.assertEqual(result.potential_profit, 397)
+        self.assertAlmostEqual(result.annualized_return, 397 / 10000 * 365 / 30)
 
     def test_remaining_is_avoided_buyback_plus_fee(self):
-        result = self.remaining(contracts=2, closing_fee=3, expiration_fee=1)
-        self.assertEqual(result.potential_profit, 102)
-        self.assertAlmostEqual(result.annualized_return, 102 / 10000 * 365 / 30)
+        result = self.remaining(contracts=2, closing_fee=3)
+        self.assertEqual(result.potential_profit, 103)
+        self.assertAlmostEqual(result.annualized_return, 103 / 10000 * 365 / 30)
 
     def test_remaining_matches_difference_between_terminal_profits(self):
         # Different historical credits/fees cancel from the hold-close choice.
         for credit, opening_fee in [(200, 1), (800, 5)]:
-            closing_cost, closing_fee, expiration_fee = 50, 2, 1
-            hold_profit = credit - opening_fee - expiration_fee
+            closing_cost, closing_fee = 50, 2
+            hold_profit = credit - opening_fee
             close_profit = credit - opening_fee - closing_cost - closing_fee
-            result = self.remaining(closing_fee=closing_fee, expiration_fee=expiration_fee)
+            result = self.remaining(closing_fee=closing_fee)
             self.assertEqual(result.potential_profit, hold_profit - close_profit)
 
-    def test_net_denominators_are_explicit(self):
-        initial = self.initial(opening_fee=2, capital_basis=CapitalBasis.NET_CAPITAL)
-        remaining = self.remaining(closing_fee=2, capital_basis=CapitalBasis.NET_CAPITAL)
-        self.assertEqual(initial.capital, 4802)
-        self.assertEqual(remaining.capital, 4948)
-        self.assertAlmostEqual(initial.annualized_return, 198 / 4802 * 365 / 30)
-        self.assertAlmostEqual(remaining.annualized_return, 52 / 4948 * 365 / 30)
+    def test_initial_explicit_formula(self):
+        result = self.initial(strike=100, premium=1.92, opening_fee=2.50)
+        self.assertEqual(result.gross_collateral, 100 * 100)
+        self.assertEqual(result.potential_profit, 1.92 * 100 - 2.50)
+        self.assertEqual(result.period_return, result.potential_profit / 10000)
+        self.assertEqual(result.annualized_return, result.potential_profit / 10000 * 365 / 30)
+        self.assertEqual(result.transaction_fee, 2.50)
+
+    def test_remaining_explicit_formula(self):
+        result = self.remaining(strike=100, close_premium=0.30, closing_fee=2.50,
+                                expiration=self.args['as_of'] + timedelta(days=20))
+        self.assertEqual(result.gross_collateral, 10000)
+        self.assertEqual(result.potential_profit, 32.50)
+        self.assertEqual(result.period_return, 32.50 / 10000)
+        self.assertEqual(result.annualized_return, 32.50 / 10000 * 365 / 20)
+        self.assertAlmostEqual(result.annualized_return, 0.0593125)
+        self.assertEqual(result.transaction_fee, 2.50)
+
+    def test_remaining_inputs_only_describe_current_position(self):
+        self.assertEqual(set(signature(calculate_remaining_annualized_return).parameters),
+                         {'strike', 'close_premium', 'as_of', 'expiration', 'contracts', 'closing_fee'})
+
+    def test_explicit_zero_fees_override_estimates(self):
+        for result in [self.initial(), self.remaining()]:
+            self.assertEqual(result.transaction_fee, 0)
+            self.assertIsNone(result.fee_estimate)
+            self.assertEqual(result.fee_source, 'manual')
+        self.assertEqual(self.remaining().potential_profit, 50)
+
+    def test_remaining_invalid_dates_and_collateral_rejected(self):
+        for expiry in [self.args['as_of'], self.args['as_of'] - timedelta(days=1)]:
+            with self.subTest(expiry=expiry), self.assertRaises(ValueError):
+                self.remaining(expiration=expiry)
+        for strike in [0, -1, float('nan'), float('inf'), True]:
+            with self.subTest(strike=strike), self.assertRaises(ValueError):
+                self.remaining(strike=strike)
 
     def test_contract_scaling_with_proportional_fees(self):
         one = self.initial(opening_fee=1)
@@ -88,7 +114,7 @@ class PutAnnualizedReturnTests(unittest.TestCase):
             actual_remaining_days(datetime(2026, 9, 28), datetime(2026, 10, 28))
 
     def test_invalid_numbers_rejected(self):
-        for field in ['strike', 'premium', 'opening_fee', 'expiration_fee']:
+        for field in ['strike', 'premium', 'opening_fee']:
             for value in [-1, float('nan'), float('inf'), True]:
                 with self.subTest(field=field, value=value), self.assertRaises(ValueError):
                     self.initial(**{field: value})
@@ -105,35 +131,10 @@ class PutAnnualizedReturnTests(unittest.TestCase):
                 with self.subTest(value=value), self.assertRaises(ValueError):
                     function(contracts=value)
 
-    def test_invalid_denominators_and_basis_rejected(self):
-        for premium in [50, 60]:
-            with self.assertRaises(ValueError):
-                self.initial(premium=premium, capital_basis=CapitalBasis.NET_CAPITAL)
-            with self.assertRaises(ValueError):
-                self.remaining(close_premium=premium, capital_basis=CapitalBasis.NET_CAPITAL)
-        with self.assertRaises(ValueError):
-            self.initial(capital_basis='margin')
-
     def test_zero_and_negative_net_returns_preserved(self):
         self.assertEqual(self.initial(premium=0).annualized_return, 0)
         self.assertEqual(self.remaining(close_premium=0).annualized_return, 0)
         self.assertLess(self.initial(premium=0, opening_fee=1).annualized_return, 0)
-        self.assertLess(self.remaining(close_premium=0, expiration_fee=1).annualized_return, 0)
-
-    def test_thresholds_are_strict_and_configurable(self):
-        thresholds = YieldThresholds()
-        for value, expected in [(0.2999, 'entry_yield_not_met'), (0.30, 'entry_yield_not_met'), (0.3001, 'entry_yield_met')]:
-            self.assertEqual(thresholds.evaluate(replace(self.initial(), annualized_return=value)), expected)
-        for value, expected in [(0.1999, 'consider_closing'), (0.20, 'closing_yield_not_triggered'), (0.2001, 'closing_yield_not_triggered')]:
-            self.assertEqual(thresholds.evaluate(replace(self.remaining(), annualized_return=value)), expected)
-        self.assertEqual(YieldThresholds(open_above=0.6).evaluate(self.initial()), 'entry_yield_not_met')
-        self.assertEqual(YieldThresholds(consider_close_below=0.01).evaluate(self.remaining()), 'closing_yield_not_triggered')
-
-    def test_invalid_thresholds_rejected(self):
-        for field in ['open_above', 'consider_close_below']:
-            for value in [-1, float('nan'), float('inf'), True]:
-                with self.subTest(field=field), self.assertRaises(ValueError):
-                    YieldThresholds(**{field: value})
 
     def test_default_fees_are_automatic(self):
         initial = calculate_initial_annualized_return(**self.args, premium=2)
@@ -145,14 +146,11 @@ class PutAnnualizedReturnTests(unittest.TestCase):
         self.assertAlmostEqual(remaining.potential_profit, 30 + 2.5075)
         self.assertAlmostEqual(remaining.annualized_return, (30 + 2.5075) / 5000 * 365 / 30)
         self.assertIsNotNone(initial.fee_estimate)
+        self.assertGreater(initial.fee_estimate.sec, 0)
+        self.assertGreater(initial.fee_estimate.trading_activity, 0)
+        self.assertEqual(remaining.fee_estimate.sec, 0)
+        self.assertEqual(remaining.fee_estimate.trading_activity, 0)
         self.assertIn('2026-09-28', remaining.fee_source)
-
-    def test_fees_can_change_threshold_assessment(self):
-        args = dict(strike=50, as_of=date(2026, 9, 28), expiration=date(2026, 10, 28))
-        before = calculate_initial_annualized_return(**args, premium=1.24, opening_fee=0)
-        after = calculate_initial_annualized_return(**args, premium=1.24)
-        self.assertEqual(YieldThresholds().evaluate(before), 'entry_yield_met')
-        self.assertEqual(YieldThresholds().evaluate(after), 'entry_yield_not_met')
 
     def test_explicit_override_not_added_to_estimate(self):
         result = self.remaining(closing_fee=1.25)

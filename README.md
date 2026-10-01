@@ -54,7 +54,6 @@ The window shows:
 | Historical IV percentile | Latest stored IV for the exact Put versus valid prior premium-comparable observations; reference only, not a trading signal |
 | Sample coverage | Valid snapshot count, distinct New York dates, and historical date range |
 | Supporting values | DTE, moneyness, collateral, gross/net premium, fees, and historical premium-ratio median/range |
-| IREN example threshold | Whether initial annualized return is strictly greater than 30%; advisory only |
 
 **Historical reference prices are not live quotes.** The expiration list comes from the database and may not include every currently listed contract. The database is opened read-only. Missing history or missing stock price does not prevent annualized-return calculation; unavailable percentiles are not displayed as zero.
 
@@ -67,7 +66,7 @@ prior observations show **Insufficient historical IV data**, while fewer than
 20 snapshots or 5 trading dates show a limited-coverage warning. No IV score,
 entry threshold, or buy/sell recommendation is introduced.
 
-The GUI currently covers opening analysis only. Remaining-holding-period return and the below-20% example threshold are available in the calculation module, not yet in the window. Same-day expiration, adjusted contracts, multiple-contract input, and live quotes are not supported by this first GUI.
+The GUI currently covers opening analysis only. Remaining-holding-period return is available in the calculation module, not yet in the window. Same-day expiration, adjusted contracts, multiple-contract input, and live quotes are not supported by this first GUI.
 
 See [GUI usage and limitations](docs/put_gui.md).
 
@@ -116,20 +115,20 @@ The existing collector focuses on OTM Puts, so the GUI does not report percentil
 For `N` standard contracts, `M = 100 × N`, strike `K`, initial per-share premium `P0`, current buyback premium `Pt`, and actual remaining days `D`:
 
 ```text
-Default collateral = K × M
-Initial annualized return = (P0 × M − opening_fee − expiration_fee) / collateral × 365 / initial_D
-Remaining annualized return = (Pt × M + closing_fee − expiration_fee) / collateral × 365 / remaining_D
+Gross collateral = K × M
+Initial annualized return = (P0 × M − opening_fee) / collateral × 365 / initial_D
+Remaining annualized return = (Pt × M + closing_fee) / collateral × 365 / remaining_D
 ```
 
-Remaining return compares holding to worthless expiry with closing now. The original premium and opening fee cancel from this comparison. The closing fee is added because holding avoids that immediate expense. Worthless-expiry fees default to zero.
+Remaining return compares holding to worthless expiry with closing now. The original premium and opening fee cancel from this comparison. The closing fee is added because holding avoids that immediate expense. Worthless expiration requires no transaction and incurs no transaction fee.
 
 Fees default to a **Futu HK fixed-plan US equity-option estimate**, using the rate snapshot checked on September 28, 2026. Minimum commissions and sell-only charges are handled separately. Actual statement fees may override the estimate; broker rounding, execution splits, discounts, and future rate changes may differ.
 
-The GUI uses one contract, full strike collateral, and calendar days from today's New York date. The independent module also supports multiple contracts, timezone-aware timestamps with fractional days, and an explicit net-capital denominator. It rejects nonpositive time to expiration. Returns are simple annualizations, not compounded or guaranteed returns, and assume worthless expiry without assignment.
+The GUI uses one contract, full strike collateral, and calendar days from today's New York date. The independent module also supports multiple contracts and timezone-aware timestamps with fractional days. It rejects nonpositive time to expiration. Returns are simple annualizations, not compounded or guaranteed returns, and assume worthless expiry without assignment.
 
-IREN's configurable example thresholds are initial return **>30%** and remaining return **<20%** to consider closing. Equality does not trigger either condition. No orders are generated.
+The analytics layer returns objective values only and makes no open, hold, or close recommendations.
 
-See [formulas, denominator choices, fees, and examples](docs/put_annualized_return.md). For an offline example:
+See [formulas, collateral, fees, and examples](docs/put_annualized_return.md). For an offline example:
 
 ```powershell
 python scripts/analyze_put_return.py
