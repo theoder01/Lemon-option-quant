@@ -4,7 +4,7 @@ Created: September 28, 2026
 
 # 卖 Put 年化收益计算
 
-独立模块：`option_quant.analytics.put_annualized_return`。无新增依赖，不连接富途、不下单。初始年化已接入 [Put GUI](put_gui.md)；剩余持有期年化仍通过模块或离线示例使用。Risk Analysis 和 Event Analysis 暂不开发。
+独立模块：`option_quant.analytics.put_annualized_return`。无新增依赖，不连接富途、不下单。初始年化与剩余持有期年化分别接入 [Put GUI](put_gui.md) 的新建仓位和已有仓位标签页，也可通过模块或离线示例使用。Risk Analysis 和 Event Analysis 暂不开发。
 
 ## 口径
 
@@ -44,7 +44,7 @@ python -m unittest discover -s tests -p test_put_annualized_return.py -v
 
 这些值是“无价值到期且未被指派”条件下的年化展示，不是保证收益、概率加权预期收益或风险调整收益。美式 Put 可能提前被指派，需要按行权价买入每张 100 股；股价下跌损失可能远超权利金。价内 Put 的买回成本含内在价值，不能把这部分视作会自然消失的时间价值；高持有年化尤其不能证明值得继续承担接货风险。模块不预测到期股价或接货概率。
 
-开仓宜传可成交卖价，平仓宜传可成交买回价（通常参考 ask），而非过期 last 或未经核实的 mid。调用方负责合约类型、报价时间、合约乘数及同一估值时刻的校验。当前 GUI 已显示全额现金担保分母、剩余天数、估算费用口径和接货风险提示；使用一张标准合约及自然日口径，暂不提供持仓视图或日内精确到期时刻。
+开仓宜传可成交卖价，平仓宜传可成交买回价（通常参考 ask），而非过期 last 或未经核实的 mid。调用方负责合约类型、报价时间、合约乘数及同一估值时刻的校验。当前 GUI 已显示全额现金担保分母、剩余天数、估算费用口径和接货风险提示；新建仓位使用一张标准合约，已有仓位支持正整数张数；两页均使用自然日口径，暂不提供日内精确到期时刻。
 
 参考：[OIC — Cash-Secured Put](https://www.optionseducation.org/strategies/all-strategies/cash-secured-put)。
 

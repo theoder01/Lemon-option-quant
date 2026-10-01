@@ -23,7 +23,40 @@ preferences default to English. A save failure displays a notice and does not st
 the language change. A previously running version needs one relaunch to load this
 update; subsequent language changes do not require restarting.
 
-## Workflow and calculation conventions
+## Navigation and Existing Position
+
+Use the **New Position** / **Existing Position** tabs in the same application
+window. Inputs and calculated results stay on their page throughout the session.
+Language selection is shared; it immediately translates both pages, tab titles,
+current details, validation messages, and an open calendar without recalculation.
+Enter calculates the active page; confirming a language choice does not calculate.
+
+Existing Position accepts underlying, expiration, strike per share, current
+buyback premium per share, contracts (default 1), and current underlying price
+per share. Enter the executable buyback quote, normally Ask. Strike and spot must
+be finite and positive, premium finite and nonnegative, and contracts a positive
+integer. Validation occurs on Calculate, using the same unrestricted editing and
+ICU-safe numeric entries as New Position. Dates use the existing calendar and
+New York calendar-day convention; expiration must be after today.
+
+The three result cards show **Remaining Annualized Return**, **Remaining
+Potential Profit**, and **Gross Collateral**. Calculation Details show the
+contract, all input prices, contract count, remaining DTE, collateral, current
+buyback cost, estimated buy-to-close fee, remaining potential profit, period and
+annualized returns, and fee source. The fee is an avoided cost when holding to
+worthless expiration, not a holding charge. The GUI calls the existing remaining
+return function with automatic buy-side fees; there is no manual-fee field.
+
+Spot is position context only. A Put is OTM when spot exceeds strike, ATM at
+equality, and ITM below strike. Moneyness uses the existing strike/spot helper
+and displays a percentage. Spot never enters the remaining-return function.
+The analytics risk notice states the conditional worthless-expiration assumption,
+possible early assignment, 100 shares per contract, and potential stock losses.
+Remaining return is not guaranteed or expected return, assignment probability,
+or downside safety. There are no opening-premium/fee inputs, trade P&L, strategy
+judgments, or historical premium/IV analytics on Existing Position.
+
+## New Position workflow and calculation conventions
 
 Enter one standard US equity Put: underlying (IREN or US.IREN), expiration date,
 premium per share, strike price, and underlying spot price. All amounts are USD.
@@ -182,8 +215,9 @@ history, unchanged premium/annual/fee results, SQLite-backed loading, and both
 GUI languages. The old `tests/test_iv_analysis.py` remains a manual example;
 `tests/test_put_iv_preview.py` provides automated integration coverage.
 
-The window exposes new-position Put analysis only. Existing-position remaining
-annualized return remains in its existing module.
+Existing Position integration tests cover analytics reuse, fee estimation, input
+validation, moneyness, navigation, calendars, and immediate translation. Numeric
+editing tests exercise both pages, including simulated Tk ICU failures.
 
 [Project](../README.md) · [Architecture](architecture.md) ·
 [Return and fee conventions](put_annualized_return.md) · [Data schema](data_schema.md)

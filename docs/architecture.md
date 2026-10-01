@@ -200,6 +200,17 @@ classDiagram
         +premium_percentile
         +median_premium_ratio
     }
+    class AnalysisPage {
+        +numeric_entry()
+        +open_calendar()
+        +create_cards()
+        +create_details()
+        +set_details()
+    }
+    class ExistingPositionPage {
+        +calculate()
+        +invalidate()
+    }
     class PutAnnualizedReturnResult {
         +phase
         +remaining_days
@@ -225,7 +236,11 @@ classDiagram
         +schedule
     }
 
-    TtkFrame <|-- PutAnalysisWindow
+    TtkFrame <|-- AnalysisPage
+    AnalysisPage <|-- PutAnalysisWindow
+    AnalysisPage <|-- ExistingPositionPage
+    PutAnalysisWindow --> ExistingPositionPage : notebook tab and shared translator
+    ExistingPositionPage --> PutAnnualizedReturn : remaining return
     OptionDatabase <|-- ReadOnlyOptionDatabase
     PutAnalysisWindow --> ReadOnlyOptionDatabase : reads history
     PutAnalysisWindow --> PutPreviewAnalysis : reference and analysis
@@ -274,17 +289,17 @@ The analysis function computes initial return independently of historical availa
 
 | Concern | Current implementation |
 |---|---|
-| GUI position | One unadjusted standard Put, 100 shares |
+| GUI position | New Position: one contract; Existing Position: positive integer contracts; 100 shares each |
 | GUI dates | New York calendar date to selected expiry; same-day expiry rejected |
 | Historical match | Same underlying; moneyness ±0.02; DTE ±5; timestamps strictly before valuation |
 | Percentile | Fraction of historical `last / underlying_price` strictly below current `premium / spot`, multiplied by 100 |
 | Sample weighting | Snapshot rows; coverage reports distinct New York dates, not independent trades |
 | Sample warning | Fewer than 20 comparable rows or fewer than 5 distinct trading dates |
-| GUI annualization | Initial net premium / full strike collateral × 365 / remaining calendar days |
+| GUI annualization | New Position: initial return; Existing Position: remaining return; both use full strike collateral and simple ACT/365 |
 | Fees | Futu HK fixed plan, snapshot checked 2026-09-28; calculated estimate rather than exact statement replication |
 | Remaining return | Current buyback premium plus avoided closing fee; no original premium or opening fee |
 
-The independent return module supports more than the GUI: multiple contracts, aware datetimes with fractional remaining days, and manually overridden fees. Both phases always use full cash-secured collateral (strike × 100 × contracts). See [return definitions](put_annualized_return.md) for exact formulas and fee semantics.
+The independent return module additionally supports aware datetimes with fractional remaining days and manually overridden fees. Both phases always use full cash-secured collateral (strike × 100 × contracts). See [return definitions](put_annualized_return.md) for exact formulas and fee semantics.
 
 ## Storage and Time
 
@@ -298,4 +313,17 @@ The independent return module supports more than the GUI: multiple contracts, aw
 
 The targeted offline suite covers fee rates and minimums, return formulas, date handling, comparable filtering, read-only SQLite access, and Tk callbacks. See the [README test commands](../README.md#tests). Tests use temporary databases and hidden Tk windows; they do not need OpenD.
 
-GUI integration currently ends at opening analysis. A holding-period view can reuse `calculate_remaining_annualized_return` later. Automatic trading, Risk Analysis, and Event Analysis are not implemented as part of this work. A displayed annualized return assumes worthless expiry without assignment; the UI includes an assignment-risk notice.
+The single `PutAnalysisWindow` owns a `ttk.Notebook` with New Position and
+Existing Position frames. `AnalysisPage` shares the existing numeric-entry and
+date-picker behavior, result-card layout, details rendering, and translation
+registration. The Existing Position frame shares the owner's translator and
+language refresh; each page retains its own inputs/results. Navigation creates
+no additional Tk root and dismisses any page-specific open calendar.
+
+`ExistingPositionPage.calculate` validates UI input and calls
+`calculate_remaining_annualized_return` with `closing_fee=None`. It renders the
+returned collateral, profit, period/annualized return, and fee/source without
+reimplementing those formulas. Current spot is required solely for descriptive
+OTM/ATM/ITM status and the existing `calculate_moneyness` strike/spot helper.
+This page performs no historical database or percentile lookup and accepts no
+original opening cash flows. Automatic trading, Risk Analysis, and Event Analysis are not implemented as part of this work. A displayed annualized return assumes worthless expiry without assignment; the UI includes an assignment-risk notice.

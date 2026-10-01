@@ -66,7 +66,7 @@ prior observations show **Insufficient historical IV data**, while fewer than
 20 snapshots or 5 trading dates show a limited-coverage warning. No IV score,
 entry threshold, or buy/sell recommendation is introduced.
 
-The GUI currently covers opening analysis only. Remaining-holding-period return is available in the calculation module, not yet in the window. Same-day expiration, adjusted contracts, multiple-contract input, and live quotes are not supported by this first GUI.
+The same window has **New Position** and **Existing Position** tabs. Switching tabs preserves each page's inputs and results. Existing Position accepts underlying, expiration, strike per share, current executable buyback premium per share (normally Ask), positive integer contracts (default 1), and current underlying price per share. Its three cards show remaining annualized return, remaining potential profit, and gross collateral. Details include buyback cost, avoided buy-to-close fee and source, period return, and OTM/ATM/ITM with strike/spot moneyness. Spot is context only and never enters the remaining-return calculation. Existing Position does not load historical percentiles or ask for opening cash flows. Both pages share immediate English/Chinese switching, numeric editing, and the date picker. Same-day expiration, adjusted contracts, and live quotes are not supported; New Position still uses one contract.
 
 See [GUI usage and limitations](docs/put_gui.md).
 
@@ -124,7 +124,7 @@ Remaining return compares holding to worthless expiry with closing now. The orig
 
 Fees default to a **Futu HK fixed-plan US equity-option estimate**, using the rate snapshot checked on September 28, 2026. Minimum commissions and sell-only charges are handled separately. Actual statement fees may override the estimate; broker rounding, execution splits, discounts, and future rate changes may differ.
 
-The GUI uses one contract, full strike collateral, and calendar days from today's New York date. The independent module also supports multiple contracts and timezone-aware timestamps with fractional days. It rejects nonpositive time to expiration. Returns are simple annualizations, not compounded or guaranteed returns, and assume worthless expiry without assignment.
+New Position uses one contract; Existing Position accepts a positive integer contract count. Both use full strike collateral and calendar days from today's New York date. The independent module also supports multiple contracts and timezone-aware timestamps with fractional days. It rejects nonpositive time to expiration. Returns are simple annualizations, not compounded or guaranteed returns, and assume worthless expiry without assignment.
 
 The analytics layer returns objective values only and makes no open, hold, or close recommendations.
 
@@ -209,12 +209,11 @@ Some older `tests/test_*.py` files are manually runnable examples or integration
 - Historical collection, filtering, validation, persistence, duplicate protection, rate limiting, and retry.
 - Comparable-option selection, historical IV statistics, and normalized premium percentile.
 - Initial and remaining cash-secured Put return modules with estimated fees.
-- Offline single-Put opening-analysis GUI with historical reference prices and selectable expirations.
+- One offline GUI with New Position historical analysis and Existing Position remaining-return analysis.
 
 ### Next Candidates
 
 - Accumulate more historical data and assess sample coverage.
-- Add a holding-period view to the GUI using the existing remaining-return module.
 - Evaluate historical strategy performance and, later, candidate scanning when justified by the research.
 
 Risk Analysis and Event Analysis remain deferred. The application does not perform automatic trading.

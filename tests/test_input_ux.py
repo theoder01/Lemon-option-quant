@@ -26,6 +26,14 @@ class InputUXTests(unittest.TestCase):
         self.window.change_language()
         self.root.update()
 
+    def numeric_fields(self):
+        for page, tab in [(self.window, self.window.new_page),
+                          (self.window.existing_page, self.window.existing_page)]:
+            self.window.notebook.select(tab)
+            self.root.update()
+            for key, entry in page.numeric_entries.items():
+                yield f'{type(page).__name__}.{key}', entry
+
     def focus(self, widget):
         widget.focus_force()
         self.root.update()
@@ -39,7 +47,7 @@ class InputUXTests(unittest.TestCase):
     def test_backspace_delete_select_all_and_typing_for_every_numeric_field(self):
         for language in LANGUAGES:
             self.language(language)
-            for key, entry in self.window.numeric_entries.items():
+            for key, entry in self.numeric_fields():
                 with self.subTest(language=language, field=key):
                     self.assertEqual(entry['validate'], 'none')
                     self.focus(entry)
@@ -77,7 +85,7 @@ class InputUXTests(unittest.TestCase):
         try:
             for language in LANGUAGES:
                 self.language(language)
-                for key, entry in self.window.numeric_entries.items():
+                for key, entry in self.numeric_fields():
                     with self.subTest(language=language, field=key):
                         self.focus(entry)
                         entry.delete(0, 'end')
@@ -108,7 +116,7 @@ class InputUXTests(unittest.TestCase):
             self.root.tk.call('proc', f'tk::{name}', 'args',
                               'error {cannot open ICU iterator, errorcode: 2}')
         try:
-            for key, entry in self.window.numeric_entries.items():
+            for key, entry in self.numeric_fields():
                 with self.subTest(field=key):
                     self.focus(entry)
                     entry.delete(0, 'end')
