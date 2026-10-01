@@ -36,6 +36,34 @@ from option_quant.time_utils import now_utc, get_trading_date
 class AnalysisPage(ttk.Frame):
     """Shared editing, date selection, translation and result presentation."""
 
+    def close_calendar(self):
+        if self.calendar_window is not None and self.calendar_window.winfo_exists():
+            self.calendar_window.destroy()
+
+    def reset_analysis(self):
+        """Start a fresh contract session without replacing widgets or settings."""
+        self.close_calendar()
+        self._resetting = True
+        try:
+            for name, default in self.contract_defaults:
+                getattr(self, name).set(default)
+            self.expiry_box.configure(values=())
+            self.reset_reference_context()
+        finally:
+            self._resetting = False
+        self.invalidate()
+        self.set_message(self.status, message(self.initial_status_key))
+        self.viewport.canvas.yview_moveto(0)
+
+    def reset_reference_context(self):
+        """Page-specific reference state, if any."""
+
+    def ticker_changed(self, *args):
+        underlying = self.underlying.get()
+        if underlying != self._analysis_underlying:
+            self._analysis_underlying = underlying
+            self.reset_analysis()
+
     def numeric_entry(self, master, key, variable):
         # Editing must allow empty/partial text. Existing analysis validates only
         # when Calculate is invoked. Keep native text editing where possible.
@@ -308,6 +336,9 @@ class AnalysisPage(ttk.Frame):
 
 
 class PutAnalysisWindow(AnalysisPage):
+    contract_defaults = (('expiry', ''), ('premium', ''), ('strike', ''), ('spot', ''))
+    initial_status_key = 'initial_status'
+
     def __init__(self, master, database_path: Path, preference_path: Path | None = None):
         super().__init__(master, padding=0)
         apply_theme(self.winfo_toplevel())
@@ -391,9 +422,11 @@ class PutAnalysisWindow(AnalysisPage):
         self.new_page.bind_content()
         self.existing_page=ExistingPositionPage(self.notebook,self)
         self.notebook.add(self.existing_page,text=self.translator.render(message('existing_position')))
+        self._active_tab = self.notebook.select()
         self.notebook.bind('<<NotebookTabChanged>>',self.page_changed)
         self.winfo_toplevel().title(self.translator.render(message("window_title")))
 
+        self._analysis_underlying = self.underlying.get()
         self.underlying.trace_add("write", self.ticker_changed)
         self.database_path.trace_add("write", self.database_changed)
         self.spot.trace_add("write", self.spot_changed)
@@ -403,10 +436,15 @@ class PutAnalysisWindow(AnalysisPage):
         self.winfo_toplevel().bind("<Return>", self.on_return)
 
     def page_changed(self, event=None):
+        selected = self.notebook.select()
+        if selected == self._active_tab:
+            return
+        self._active_tab = selected
         # A calendar belongs to its page; dismiss it when navigating away.
         for page in (self, self.existing_page):
-            if page.calendar_window is not None and page.calendar_window.winfo_exists():
-                page.calendar_window.destroy()
+            page.close_calendar()
+        page = self.existing_page if selected == str(self.existing_page) else self
+        page.reset_analysis()
 
     def on_return(self, event):
         # Confirming a language choice must never trigger a calculation.
@@ -439,6 +477,8 @@ class PutAnalysisWindow(AnalysisPage):
             self.set_message(self.preference_status, "")
 
     def invalidate(self, *args):
+        if getattr(self, '_resetting', False):
+            return
         self.annual_text.set("—")
         self.set_message(self.percentile_text, "—")
         self.set_message(self.iv_percentile_text, "—")
@@ -447,18 +487,23 @@ class PutAnalysisWindow(AnalysisPage):
         self.set_details("")
         self.set_message(self.status, message('inputs_updated'))
 
-    def ticker_changed(self, *args):
+    def reset_reference_context(self):
+        self._loading = False
+        self._historical_spot = False
+        self.set_message(self.spot_source, message('manual_spot_hint'))
+
+    def database_changed(self, *args):
+        # Preserve the existing database-change behavior independently of ticker resets.
         self.expiry_box.configure(values=())
         self.spot.set("")
         self._historical_spot = False
         self.set_message(self.spot_source, message('underlying_changed'))
         self.invalidate()
-
-    def database_changed(self, *args):
-        self.ticker_changed()
         self.ticker_box.configure(values=())
 
     def spot_changed(self, *args):
+        if getattr(self, '_resetting', False):
+            return
         if not self._loading:
             self._historical_spot = False
             self.set_message(self.spot_source, message('manual_spot_source'))
@@ -588,6 +633,9 @@ class PutAnalysisWindow(AnalysisPage):
 
 class ExistingPositionPage(AnalysisPage):
     """Current-position inputs and presentation; financial values come from analytics."""
+    contract_defaults = (('expiry', ''), ('strike', ''), ('close_premium', ''),
+                         ('contracts', '1'), ('spot', ''))
+    initial_status_key = 'existing_initial_status'
 
     def __init__(self, master, owner):
         super().__init__(master, padding=0)
@@ -625,10 +673,14 @@ class ExistingPositionPage(AnalysisPage):
             ('gross_collateral',self.collateral_text,[]),
         ],existing=True)
         viewport.bind_content()
-        for variable in (self.underlying, self.expiry, self.strike, self.close_premium, self.contracts, self.spot):
+        self._analysis_underlying = self.underlying.get()
+        self.underlying.trace_add('write', self.ticker_changed)
+        for variable in (self.expiry, self.strike, self.close_premium, self.contracts, self.spot):
             variable.trace_add('write', self.invalidate)
 
     def invalidate(self, *args):
+        if getattr(self, '_resetting', False):
+            return
         self.result = None
         for variable in (self.annual_text, self.profit_text, self.collateral_text):
             variable.set('—')

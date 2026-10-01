@@ -146,9 +146,9 @@ class ExistingPositionTests(unittest.TestCase):
         self.language('zh_CN')
         self.assertIn('合约张数必须是正整数', self.page.status.get())
 
-    def test_navigation_preserves_both_pages_and_one_root(self):
+    def test_navigation_resets_destination_and_preserves_one_root(self):
         self.page.calculate()
-        previous = self.page.result
+        self.assertIsNotNone(self.page.result)
         children = self.root.winfo_children()
         with patch('option_quant.put_gui.tk.Tk') as new_root, \
              patch('option_quant.put_gui.ReadOnlyOptionDatabase.load_underlying', return_value=sample_history()):
@@ -163,12 +163,14 @@ class ExistingPositionTests(unittest.TestCase):
             self.assertIn('%', initial)
             self.window.notebook.select(self.page)
             self.root.update()
-            self.assertIs(self.page.result, previous)
-            self.assertEqual(self.page.close_premium.get(), '0.30')
+            self.assertIsNone(self.page.result)
+            self.assertEqual(self.page.close_premium.get(), '')
+            self.assertEqual(self.page.contracts.get(), '1')
             self.assertEqual(self.root.winfo_children(), children)
             self.window.notebook.select(self.window.new_page)
-            self.assertEqual(self.window.premium.get(), '2')
-            self.assertEqual(self.window.annual_text.get(), initial)
+            self.root.update()
+            self.assertEqual(self.window.premium.get(), '')
+            self.assertEqual(self.window.annual_text.get(), '—')
             new_root.assert_not_called()
         self.assertIs(self.page.tk, self.window.tk)
 
