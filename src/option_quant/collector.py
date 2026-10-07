@@ -4,11 +4,15 @@
 
 import pandas as pd
 
-from option_quant.filters import filter_otm_puts
+from option_quant.filters import (
+    filter_otm_calls,
+    filter_otm_puts,
+)
 from option_quant.time_utils import now_utc
 
 
 SNAPSHOT_BATCH_SIZE = 200
+
 
 def _get_full_option_chain(
     client,
@@ -148,11 +152,19 @@ def collect_option_snapshot(
     Collect one complete option snapshot for an underlying.
 
     Current strategy:
-    - Put options only
+
+    PUT:
     - Out-of-the-money only
-    - Strike >= 60% of underlying price
+    - Strike >= 70% of underlying price
     - Strike < underlying price
-    - Expiration dates from today up to one year
+
+    CALL:
+    - Out-of-the-money only
+    - Strike > underlying price
+    - Strike <= 130% of underlying price
+
+    Expiration dates:
+    - Today up to one year
     """
 
     snapshot_time = now_utc()
@@ -174,18 +186,46 @@ def collect_option_snapshot(
         underlying=underlying,
     )
 
+    if option_chain.empty:
+        return pd.DataFrame()
+
     # ---------------------------------------------------------
-    # 3. Filter relevant OTM puts
+    # 3. Filter relevant OTM puts and calls
     # ---------------------------------------------------------
 
-    filtered_chain = filter_otm_puts(
+    filtered_puts = filter_otm_puts(
         option_chain=option_chain,
         underlying_price=underlying_price,
+    )
+
+    filtered_calls = filter_otm_calls(
+        option_chain=option_chain,
+        underlying_price=underlying_price,
+    )
+
+    filtered_chain = pd.concat(
+        [
+            filtered_puts,
+            filtered_calls,
+        ],
+        ignore_index=True,
     )
 
     option_codes = filtered_chain[
         "code"
     ].tolist()
+
+    all_put_count = len(
+        option_chain[
+            option_chain["option_type"] == "PUT"
+        ]
+    )
+
+    all_call_count = len(
+        option_chain[
+            option_chain["option_type"] == "CALL"
+        ]
+    )
 
     print()
     print(f"Underlying: {underlying}")
@@ -194,11 +234,23 @@ def collect_option_snapshot(
         f"{underlying_price:.2f}"
     )
     print(
-        f"All Put contracts: "
-        f"{len(option_chain[option_chain['option_type'] == 'PUT'])}"
+        f"All Put contracts:      "
+        f"{all_put_count}"
     )
     print(
         f"Filtered Put contracts: "
+        f"{len(filtered_puts)}"
+    )
+    print(
+        f"All Call contracts:     "
+        f"{all_call_count}"
+    )
+    print(
+        f"Filtered Call contracts:"
+        f" {len(filtered_calls)}"
+    )
+    print(
+        f"Total filtered:         "
         f"{len(filtered_chain)}"
     )
     print()
@@ -215,8 +267,38 @@ def collect_option_snapshot(
         option_codes=option_codes,
     )
 
+    if snapshots.empty:
+        return pd.DataFrame()
+
     # ---------------------------------------------------------
-    # 5. Build clean 17-column dataset
+    # 5. Map option code -> option type
+    # ---------------------------------------------------------
+
+    option_type_by_code = (
+        filtered_chain
+        .set_index("code")["option_type"]
+        .to_dict()
+    )
+
+    option_types = snapshots[
+        "code"
+    ].map(
+        option_type_by_code
+    )
+
+    if option_types.isna().any():
+        missing_codes = snapshots.loc[
+            option_types.isna(),
+            "code",
+        ].tolist()
+
+        raise RuntimeError(
+            "Could not determine option_type for: "
+            + ", ".join(missing_codes)
+        )
+
+    # ---------------------------------------------------------
+    # 6. Build clean 18-column dataset
     # ---------------------------------------------------------
 
     result = pd.DataFrame(
@@ -277,6 +359,9 @@ def collect_option_snapshot(
 
             "theta":
                 snapshots["option_theta"],
+
+            "option_type":
+                option_types,
         }
     )
 

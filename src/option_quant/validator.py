@@ -26,6 +26,7 @@ class ValidationReport:
     invalid_delta: int
     invalid_gamma: int
     invalid_vega: int
+    invalid_option_type: int
 
 
 class OptionDataValidator:
@@ -49,9 +50,15 @@ class OptionDataValidator:
         "gamma",
         "vega",
         "theta",
+        "option_type",
     ]
 
     MAX_IV = 500.0
+
+    VALID_OPTION_TYPES = {
+        "PUT",
+        "CALL",
+    }
 
     def validate(
         self,
@@ -82,6 +89,21 @@ class OptionDataValidator:
 
         missing_values = int(
             missing_mask.sum()
+        )
+
+        # -------------------------------------------------
+        # Invalid option type
+        # -------------------------------------------------
+
+        invalid_option_type_mask = (
+            clean_df["option_type"].isna()
+            | ~clean_df["option_type"].isin(
+                self.VALID_OPTION_TYPES
+            )
+        )
+
+        invalid_option_type = int(
+            invalid_option_type_mask.sum()
         )
 
         # -------------------------------------------------
@@ -175,6 +197,7 @@ class OptionDataValidator:
 
         invalid_mask = (
             missing_mask
+            | invalid_option_type_mask
             | invalid_underlying_mask
             | invalid_strike_mask
             | invalid_dte_mask
@@ -219,6 +242,9 @@ class OptionDataValidator:
             invalid_delta=invalid_delta,
             invalid_gamma=invalid_gamma,
             invalid_vega=invalid_vega,
+            invalid_option_type=(
+                invalid_option_type
+            ),
         )
 
         return clean_df, report

@@ -3,6 +3,7 @@
 # Created: September 13, 2026
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pandas as pd
@@ -48,6 +49,33 @@ class OptionDatabase:
         return sqlite3.connect(
             self.database_path
         )
+
+    @staticmethod
+    def _migrate_option_type(connection: sqlite3.Connection) -> bool:
+        """Upgrade legacy PUT-only history within the caller's transaction."""
+        # Lock before inspecting the schema so concurrent migrations serialize.
+        # Explicit BEGIN also makes ALTER and backfill roll back together.
+        if not connection.in_transaction:
+            connection.execute("BEGIN IMMEDIATE")
+
+        columns = connection.execute(
+            "PRAGMA table_info(option_snapshots)"
+        ).fetchall()
+        if not columns or any(row[1].lower() == "option_type" for row in columns):
+            return False
+
+        connection.execute(
+            "ALTER TABLE option_snapshots ADD COLUMN option_type TEXT"
+        )
+        connection.execute(
+            "UPDATE option_snapshots SET option_type = 'PUT'"
+        )
+        return True
+
+    def migrate_option_type(self) -> bool:
+        """Migrate existing history without collecting or inserting snapshots."""
+        with closing(self._connect()) as connection, connection:
+            return self._migrate_option_type(connection)
 
     def save_snapshots(
         self,
@@ -140,7 +168,7 @@ class OptionDatabase:
         # 4. Open database
         # -------------------------------------------------
 
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
 
             # ---------------------------------------------
             # Check whether the table already exists
@@ -172,6 +200,9 @@ class OptionDatabase:
                 return len(df), 0
 
             # ---------------------------------------------
+            # Upgrade only an existing table; do not change incoming records.
+            self._migrate_option_type(connection)
+
             # 5. Find contracts already stored during
             #    this New York trading date
             # ---------------------------------------------

@@ -5,7 +5,8 @@
 import pandas as pd
 
 
-MIN_STRIKE_RATIO = 0.60
+MIN_STRIKE_RATIO = 0.70
+MAX_STRIKE_RATIO = 1.30
 
 
 def filter_otm_puts(
@@ -22,28 +23,11 @@ def filter_otm_puts(
             < underlying_price
 
     Example:
-        underlying_price = 218.29
-        min_strike_ratio = 0.60
+        underlying_price = 200.00
+        min_strike_ratio = 0.70
 
         Valid strike range:
-        152.80 <= strike_price < 218.29
-
-    Parameters
-    ----------
-    option_chain : pandas.DataFrame
-        Option chain returned by Futu OpenAPI.
-
-    underlying_price : float
-        Current price of the underlying security.
-
-    min_strike_ratio : float
-        Minimum strike price as a fraction of the underlying price.
-        Default is 0.70.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Filtered OTM put option chain.
+        140.00 <= strike_price < 200.00
     """
 
     if underlying_price <= 0:
@@ -70,3 +54,50 @@ def filter_otm_puts(
     ].copy()
 
     return filtered_puts
+
+
+def filter_otm_calls(
+    option_chain: pd.DataFrame,
+    underlying_price: float,
+    max_strike_ratio: float = MAX_STRIKE_RATIO,
+) -> pd.DataFrame:
+    """
+    Filter the option chain for out-of-the-money call options.
+
+    Selection rules:
+        underlying_price
+            < strike_price
+            <= max_strike_ratio * underlying_price
+
+    Example:
+        underlying_price = 200.00
+        max_strike_ratio = 1.30
+
+        Valid strike range:
+        200.00 < strike_price <= 260.00
+    """
+
+    if underlying_price <= 0:
+        raise ValueError(
+            "underlying_price must be greater than zero."
+        )
+
+    if max_strike_ratio <= 1:
+        raise ValueError(
+            "max_strike_ratio must be greater than 1."
+        )
+
+    calls = option_chain[
+        option_chain["option_type"] == "CALL"
+    ].copy()
+
+    max_strike = (
+        max_strike_ratio * underlying_price
+    )
+
+    filtered_calls = calls[
+        (calls["strike_price"] > underlying_price)
+        & (calls["strike_price"] <= max_strike)
+    ].copy()
+
+    return filtered_calls
