@@ -19,10 +19,15 @@ def sample(symbol):
 
 
 class ScanTests(unittest.TestCase):
-    def test_exact_universe(self):
-        self.assertEqual(UNDERLYINGS, [
-            'US.NVDA', 'US.GOOG', 'US.TSLA', 'US.SPCX', 'US.NBIS', 'US.RKLB',
-            'US.IREN', 'US.BE', 'US.MU', 'US.SKHY', 'US.SNDK', 'US.AAPL', 'US.MSFT'])
+    def test_configured_universe_is_scanned_in_order(self):
+        with patch('live_short_put_scanner.market_data.get_snapshot',
+                   side_effect=lambda client, symbol: sample(symbol)) as get:
+            result = scan_underlyings(Mock(), UNDERLYINGS)
+        self.assertEqual([call.args[1] for call in get.call_args_list], UNDERLYINGS)
+        self.assertEqual(result.requested, UNDERLYINGS)
+        self.assertEqual([row.symbol for row in result.snapshots], UNDERLYINGS)
+        self.assertEqual(len(result.snapshots), len(UNDERLYINGS))
+        self.assertEqual(result.skipped, {})
 
     def test_all_symbols_attempted_despite_errors_and_missing_data(self):
         def fetch(client, symbol):
@@ -35,7 +40,8 @@ class ScanTests(unittest.TestCase):
             result = scan_underlyings(Mock(), UNDERLYINGS)
         self.assertEqual([c.args[1] for c in get.call_args_list], UNDERLYINGS)
         self.assertEqual(result.requested, UNDERLYINGS)
-        self.assertEqual(list(result.skipped), ['US.SPCX', 'US.SKHY'])
+        self.assertEqual(list(result.skipped),
+                         [symbol for symbol in UNDERLYINGS if symbol in ('US.SPCX', 'US.SKHY')])
         self.assertEqual([s.symbol for s in result.snapshots], [s for s in UNDERLYINGS if s not in result.skipped])
         self.assertIn('API unavailable', result.skipped['US.SPCX'])
         self.assertIn('hv', result.skipped['US.SKHY'])
@@ -76,4 +82,7 @@ class ScanTests(unittest.TestCase):
             with redirect_stdout(output):
                 self.assertEqual(main(), 1)
             show.assert_not_called()
-        self.assertIn('Skipped symbols: 13', output.getvalue())
+        self.assertIn(f'Skipped symbols: {len(UNDERLYINGS)}', output.getvalue())
+        self.assertIn(f'Requested symbols ({len(UNDERLYINGS)})', output.getvalue())
+        for symbol in UNDERLYINGS:
+            self.assertIn(f'WARNING {symbol}:', output.getvalue())

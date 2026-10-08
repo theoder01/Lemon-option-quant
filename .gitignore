@@ -97,3 +97,4 @@ Thumbs.db
 build/
 dist/
 .venv-build/
+outputs/

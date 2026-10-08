@@ -4,8 +4,33 @@
 
 FUTU_HOST = "127.0.0.1"
 FUTU_PORT = 11111
+
 UNDERLYINGS = [
-    "US.NVDA", "US.GOOG", "US.TSLA", "US.SPCX", "US.NBIS",
-    "US.RKLB", "US.IREN", "US.BE", "US.MU", "US.SKHY",
-    "US.SNDK", "US.AAPL", "US.MSFT",
+    "US.AAPL",
+    "US.AMD",
+    "US.AMZN",
+    "US.BA",
+    "US.BE",
+    "US.COIN",
+    "US.DIS",
+    "US.GOOG",
+    "US.HOOD",
+    "US.INTC",
+    "US.IREN",
+    "US.MARA",
+    "US.META",
+    "US.MSFT",
+    "US.MU",
+    "US.NBIS",
+    "US.NVDA",
+    "US.PLTR",
+    "US.PYPL",
+    "US.RKLB",
+    "US.SKHY",
+    "US.SNDK",
+    "US.SO",
+    "US.SOFI",
+    "US.SPCX",
+    "US.TSLA",
+    "US.UBER",
 ]

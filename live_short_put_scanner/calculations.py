@@ -18,6 +18,16 @@ def finite_number(value: object) -> float | None:
     return number if isfinite(number) else None
 
 
+def normalize_official_iv_rank(value: object) -> float | None:
+    """Preserve Futu's official rank; no local historical formula or fallback.
+
+    This pure adapter retains the existing finite-number/missing-value policy.
+    Historical sample sufficiency and flat IV ranges are handled by the provider,
+    not reinterpreted here. Range validation remains in snapshot_issue.
+    """
+    return finite_number(value)
+
+
 def calculate_vrp(iv: object, hv: object) -> float | None:
     """IV minus HV, in percentage points."""
     iv, hv = finite_number(iv), finite_number(hv)

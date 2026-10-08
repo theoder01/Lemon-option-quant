@@ -8,7 +8,7 @@ import pandas as pd
 
 from .calculations import (
     calculate_distance_from_high, calculate_high_52w_close,
-    calculate_vrp, calculate_vrp_rank, finite_number,
+    calculate_vrp, calculate_vrp_rank, finite_number, normalize_official_iv_rank,
 )
 from .futu_client import FutuClient, FutuDataError
 from .models import ScanResult, UnderlyingSnapshot, snapshot_issue
@@ -48,7 +48,7 @@ def get_snapshot(client: FutuClient, symbol: str, end_date: date | None = None) 
     high = calculate_high_52w_close(history["underlying_price"])
     return UnderlyingSnapshot(
         symbol=symbol, name=str(official.get("name", symbol)), price=price, iv=iv, hv=hv,
-        iv_rank=finite_number(official["iv_rank"]), vrp=vrp,
+        iv_rank=normalize_official_iv_rank(official["iv_rank"]), vrp=vrp,
         vrp_rank=calculate_vrp_rank(vrp, historical_vrps), high_52w_close=high,
         drawdown_from_52w_high=calculate_distance_from_high(price, high),
         observation_time=str(latest["time"]),

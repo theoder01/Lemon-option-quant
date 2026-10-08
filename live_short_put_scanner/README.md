@@ -44,6 +44,30 @@ Negative historical IV/HV observations are excluded from the rank sample.
 
 ## Data conventions
 
+Task 08 prepares exactly four stock-selection metrics: IV Rank, IV-HV,
+52W Drawdown and 25-delta Put-Call Skew. Spot is contextual display data.
+No aggregate file, score, option-contract selection or annualized return is added.
+Existing charts and VRP Rank context are unchanged by this preparation task.
+
+Reusable metric entry points:
+
+- `normalize_official_iv_rank(value)` in `calculations.py`: a deterministic adapter
+  for the Futu overview's official `iv_rank`, using the existing finite/missing
+  value policy. This is the only IV Rank source. There is no local historical IV
+  Rank formula. A flat or short local history does not override an available
+  official rank; missing official values stay unavailable. An empty historical
+  dataset still raises the existing snapshot data error. Snapshot range checks
+  remain separate. Provider formula validation requires provider documentation
+  or reference data; synthetic unit tests only verify faithful value handling.
+- `calculate_vrp(iv, hv)`: reused for IV-HV, with signed percentage-point output.
+- `calculate_high_52w_close(prices)` and `calculate_distance_from_high(price, high)`:
+  reused for raw percentage drawdown. Above-high prices retain negative drawdown;
+  nonpositive/invalid highs produce unavailable values.
+- `option_quant.analytics.skew.calculate_25delta_skew(...)`: the existing pure
+  group-level 25-delta PUT IV minus CALL IV calculation. Its algorithm and tests
+  remain unchanged. This documents the future aggregator's available entry point;
+  the scanner does not import or integrate skew in Task 08.
+
 - Price, IV and HV come from the same newest historical observation, selected by
   parsed `time`, regardless of API row order. The observation time is displayed.
   These are not promised to be streaming quotes. Missing newest values stay
